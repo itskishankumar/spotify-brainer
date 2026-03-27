@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "Spotify Brainer",
+  "version": "0.1.0",
+  "description": "AI powered brain for Spotify",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "unlimitedStorage",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://open.spotify.com/*",
+    "https://api.spotify.com/*",
+    "https://accounts.spotify.com/*",
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://open.spotify.com/*"],
+      "js": ["lib/marked.min.js", "content/inject.js"],
+      "css": ["content/inject.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://open.spotify.com/*"],
+      "js": ["content/spotify-scraper.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar/*", "llm/*", "lib/*"],
+      "matches": ["https://open.spotify.com/*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "toggle-sidebar": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B",
+        "mac": "Command+Shift+B"
+      },
+      "description": "Toggle Spotify Brainer sidebar"
+    }
+  }
+}
