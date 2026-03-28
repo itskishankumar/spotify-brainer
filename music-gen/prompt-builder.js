@@ -43,7 +43,8 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
-  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>}');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>}');
+  lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["dreamy","shoegaze","lo-fi"] or ["trap","dark","heavy"]). These are displayed to the user as labels.');
   lines.push('');
 
   // Inject overall taste profile as baseline context
@@ -160,7 +161,8 @@ export function buildFutureTasteSystemPrompt(historyMetrics, spotifyData, intell
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
-  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"futureTasteReason":"1 sentence explaining what trend this extrapolates and where you predict their taste is heading"}');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"futureTasteReason":"1 sentence explaining what trend this extrapolates and where you predict their taste is heading"}');
+  lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["futuristic","ambient","ethereal"]). These are displayed to the user as labels.');
   lines.push('');
 
   const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
@@ -321,7 +323,8 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
-  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"the specific genre you picked from the candidates","instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"antiTasteReason":"1-2 sentences: what blind spot this targets, why it\'s distant from their taste, and what familiar anchor was kept"}');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"the specific genre you picked from the candidates","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"antiTasteReason":"1-2 sentences: what blind spot this targets, why it\'s distant from their taste, and what familiar anchor was kept"}');
+  lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["afrobeats","groovy","percussive"]). These are displayed to the user as labels.');
   lines.push('');
 
   const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);

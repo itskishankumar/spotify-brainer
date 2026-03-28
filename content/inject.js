@@ -4,6 +4,10 @@
 (function () {
   if (document.getElementById('spotify-brainer-panel')) return;
 
+  // Module-level refs for music gen messages (assigned inside generate tab scope)
+  let _genSetStatus = null;
+  let _genOnAlbumArt = null;
+
   // --- SVG Icons ---
   const ICONS = {
     brain: '<svg viewBox="0 0 24 24"><path d="M12 2C8.5 2 5.5 4.5 5 7.5c-1 .5-2 1.5-2 3 0 1 .5 2 1.5 2.5-.5 1-.5 2 0 3 .5 1 1.5 1.5 2.5 2 0 2 1.5 4 4 4h2c2.5 0 4-2 4-4 1-.5 2-1 2.5-2 .5-1 .5-2 0-3 1-.5 1.5-1.5 1.5-2.5 0-1.5-1-2.5-2-3C18.5 4.5 15.5 2 12 2z"/></svg>',
@@ -18,7 +22,7 @@
     copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
     export: '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
-    generate: '<svg viewBox="0 0 24 24"><path d="M19 3l-1.5 3-1.5-3-3-1.5 3-1.5L19 0l1.5 3 3 1.5-3 1.5zM12 7.5l-2 4-4 2 4 2 2 4 2-4 4-2-4-2-2-4zm-7 9l-1 2-2 1 2 1 1 2 1-2 2-1-2-1-1-2z"/></svg>',
+    generate: '<svg viewBox="0 0 24 24"><path d="M7.5 5.6L10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7zm12 9.8L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5zm-7.63 5.29a1 1 0 00-1.41 0L1.29 18.96a1 1 0 000 1.41l2.34 2.34a1 1 0 001.41 0L16.71 11.04a1 1 0 000-1.41z"/></svg>',
     play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
     pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
   };
@@ -251,7 +255,6 @@
     <div class="sb-generate" id="sb-generate">
       <div class="sb-generate-inner">
         <div class="sb-generate-hero">
-          <div class="sb-generate-icon">${ICONS.generate}</div>
           <h2>Generate Music</h2>
           <p>AI-generated 30-second clip tailored to your taste</p>
         </div>
@@ -280,6 +283,12 @@
 
         <!-- Audio player -->
         <div id="sb-gen-player" class="sb-gen-player" style="display:none">
+          <div class="sb-gen-player-header">
+            <div style="flex:1"></div>
+            <button id="sb-gen-close-btn" class="sb-gen-close-btn" title="Close player">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          </div>
           <img id="sb-gen-album-art" class="sb-gen-album-art" style="display:none" />
           <div class="sb-gen-track-name-row">
             <div id="sb-gen-track-name" class="sb-gen-track-name"></div>
@@ -288,9 +297,7 @@
             </button>
           </div>
           <input id="sb-gen-rename-input" class="sb-gen-rename-input" type="text" maxlength="60" style="display:none" />
-          <div class="sb-gen-waveform" id="sb-gen-waveform">
-            ${Array.from({length: 40}, (_, i) => `<div class="sb-gen-bar" style="animation-delay:${(i * 0.05).toFixed(2)}s"></div>`).join('')}
-          </div>
+          <div id="sb-gen-tags" class="sb-gen-tags"></div>
           <div class="sb-gen-controls">
             <button id="sb-gen-play-btn" class="sb-gen-play-btn">${ICONS.play}</button>
             <div class="sb-gen-scrubber-wrap">
@@ -324,9 +331,15 @@
           </div>
           <video id="sb-gen-video" class="sb-gen-video" style="display:none" controls loop></video>
           <div id="sb-gen-insights" class="sb-gen-insights" style="display:none"></div>
+          <div id="sb-gen-user-prompt-wrap" class="sb-gen-prompt-preview" style="display:none">
+            <details>
+              <summary>Your prompt</summary>
+              <p id="sb-gen-user-prompt"></p>
+            </details>
+          </div>
           <div class="sb-gen-prompt-preview">
             <details>
-              <summary>View prompt used</summary>
+              <summary>View Lyria prompt</summary>
               <p id="sb-gen-prompt-used"></p>
             </details>
           </div>
@@ -334,7 +347,7 @@
 
         <!-- Saved songs library -->
         <div class="sb-gen-library" id="sb-gen-library" style="display:none">
-          <div class="sb-gen-library-header">Saved Clips</div>
+          <div class="sb-gen-library-header">Saved Tracks <span id="sb-gen-lib-count" class="sb-gen-lib-count"></span></div>
           <div id="sb-gen-library-list"></div>
         </div>
       </div>
@@ -2051,11 +2064,17 @@
     });
   }
 
-  // Listen for credits requests from service worker
+  // Listen for messages from service worker
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'scrape-credits') {
       requestCreditsScrape(msg.trackId).then(credits => sendResponse({ credits }));
       return true; // async response
+    }
+    if (msg.type === 'music-gen-progress' && _genSetStatus) {
+      _genSetStatus(msg.step);
+    }
+    if (msg.type === 'music-gen-albumart' && _genOnAlbumArt) {
+      _genOnAlbumArt(msg.albumArt);
     }
   });
 
@@ -2280,10 +2299,12 @@
     const genTimeCur = document.getElementById('sb-gen-time-cur');
     const genTimeTotal = document.getElementById('sb-gen-time-total');
     const genPromptUsed = document.getElementById('sb-gen-prompt-used');
-    const genWaveform = document.getElementById('sb-gen-waveform');
+    const genUserPrompt = document.getElementById('sb-gen-user-prompt');
+    const genUserPromptWrap = document.getElementById('sb-gen-user-prompt-wrap');
     const genTrackName = document.getElementById('sb-gen-track-name');
     const genRenameBtn = document.getElementById('sb-gen-rename-btn');
     const genRenameInput = document.getElementById('sb-gen-rename-input');
+    const genTags = document.getElementById('sb-gen-tags');
     const genSaveRow = document.getElementById('sb-gen-save-row');
     const genNameInput = document.getElementById('sb-gen-name-input');
     const genSaveBtn = document.getElementById('sb-gen-save-btn');
@@ -2298,6 +2319,8 @@
     const genExportBtn = document.getElementById('sb-gen-export-btn');
     const genLibrary = document.getElementById('sb-gen-library');
     const genLibraryList = document.getElementById('sb-gen-library-list');
+    const genLibCount = document.getElementById('sb-gen-lib-count');
+    const genCloseBtn = document.getElementById('sb-gen-close-btn');
 
     let audio = null;
     let isGeneratingVideo = false;
@@ -2335,6 +2358,29 @@
       genStatus.style.display = msg ? 'block' : 'none';
       genStatus.style.color = isError ? '#f15e6c' : '#b3b3b3';
     }
+    _genSetStatus = setStatus; // expose to module-level message listener
+
+    // Handle async album art arrival
+    _genOnAlbumArt = function (albumArt) {
+      if (!albumArt) return;
+      // Update whichever song is currently active
+      const song = pendingSong || currentSong;
+      if (song) {
+        song.albumArt = albumArt;
+        // Update library if it's a saved song
+        if (!pendingSong && currentSong) {
+          persistSongs();
+          renderLibrary();
+        }
+      }
+      // Diffusion reveal — blur-to-sharp + fade-in
+      genAlbumArt.classList.remove('sb-gen-diffuse');
+      genAlbumArt.src = `data:${albumArt.mimeType};base64,${albumArt.image}`;
+      genAlbumArt.style.display = 'block';
+      // Force reflow so the animation restarts cleanly
+      void genAlbumArt.offsetWidth;
+      genAlbumArt.classList.add('sb-gen-diffuse');
+    };
 
     function loadAudio(base64, mimeType) {
       if (audio) { audio.pause(); audio = null; }
@@ -2352,7 +2398,6 @@
       });
       audio.addEventListener('ended', () => {
         genPlayBtn.innerHTML = ICONS.play;
-        genWaveform.classList.remove('playing');
         genScrubberFill.style.width = '0%';
         genScrubberThumb.style.left = '0%';
         genTimeCur.textContent = '0:00';
@@ -2364,31 +2409,52 @@
       currentSong = song;
       loadAudio(song.audio, song.mimeType);
       genPromptUsed.textContent = song.prompt || '';
-      genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
-      genRenameBtn.style.display = showSaveActions ? 'none' : 'inline-flex';
+      if (song.userIntent) {
+        genUserPrompt.textContent = song.userIntent;
+        genUserPromptWrap.style.display = 'block';
+      } else {
+        genUserPromptWrap.style.display = 'none';
+      }
+      // Hide track name row for unsaved songs, show for saved
+      if (showSaveActions) {
+        document.querySelector('.sb-gen-track-name-row').style.display = 'none';
+      } else {
+        document.querySelector('.sb-gen-track-name-row').style.display = 'flex';
+        genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
+        genRenameBtn.style.display = 'inline-flex';
+      }
       genRenameInput.style.display = 'none';
-      genTrackName.style.display = 'block';
+      // Render genre tags + mode badge
+      const modeBadge = song.mode === 'anti-taste' ? '<span class="sb-gen-mode-badge sb-gen-mode-anti">Anti-Taste</span>'
+        : song.mode === 'future-taste' ? '<span class="sb-gen-mode-badge sb-gen-mode-future">Future Me</span>' : '';
+      const tagPills = (song.tags || []).map(t => `<span class="sb-gen-tag">${escapeHtml(t)}</span>`).join('');
+      if (modeBadge || tagPills) {
+        genTags.innerHTML = modeBadge + tagPills;
+        genTags.style.display = 'flex';
+      } else {
+        genTags.style.display = 'none';
+      }
       if (song.albumArt) {
         genAlbumArt.src = `data:${song.albumArt.mimeType};base64,${song.albumArt.image}`;
         genAlbumArt.style.display = 'block';
       } else {
         genAlbumArt.style.display = 'none';
       }
-      // Show video if song has one, otherwise show generate button
+      // Show video if song has one, otherwise show generate button (only for saved songs)
       if (song.video) {
         genVideo.src = `data:${song.videoMimeType || 'video/mp4'};base64,${song.video}`;
         genVideo.style.display = 'block';
         genVideoRow.style.display = 'none';
       } else {
         genVideo.style.display = 'none';
-        genVideoRow.style.display = song.prompt ? 'flex' : 'none';
+        genVideoRow.style.display = (!showSaveActions && song.prompt) ? 'flex' : 'none';
         genVideoBtnLabel.textContent = 'Generate Video';
         genVideoBtn.disabled = false;
         genVideoStatus.textContent = '';
       }
       // Render mode insights (anti-taste / future-taste)
       if (song.modeReason) {
-        genInsights.innerHTML = `<div class="sb-gen-insights-reason">${escapeHtml(song.modeReason)}</div>`;
+        genInsights.innerHTML = `<details><summary>Why this track?</summary><p>${escapeHtml(song.modeReason)}</p></details>`;
         genInsights.style.display = 'block';
       } else {
         genInsights.style.display = 'none';
@@ -2406,9 +2472,11 @@
     function renderLibrary() {
       if (!savedSongs.length) {
         genLibrary.style.display = 'none';
+        genLibCount.textContent = '';
         return;
       }
       genLibrary.style.display = 'block';
+      genLibCount.textContent = `(${savedSongs.length})`;
       genLibraryList.innerHTML = savedSongs.map((song, idx) => `
         <div class="sb-gen-lib-item" data-idx="${idx}">
           ${song.albumArt
@@ -2416,7 +2484,11 @@
             : `<button class="sb-gen-lib-play" data-idx="${idx}" title="Play">${ICONS.play}</button>`
           }
           <div class="sb-gen-lib-info">
-            <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userIntent || 'Untitled')}</div>
+            <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userIntent || 'Untitled')}${
+              song.mode === 'anti-taste' ? ' <span class="sb-gen-mode-badge sb-gen-mode-anti sb-gen-mode-badge-sm">Anti-Taste</span>'
+              : song.mode === 'future-taste' ? ' <span class="sb-gen-mode-badge sb-gen-mode-future sb-gen-mode-badge-sm">Future Me</span>' : ''
+            }</div>
+            ${song.tags?.length ? `<div class="sb-gen-lib-tags">${song.tags.map(t => `<span class="sb-gen-tag sb-gen-tag-sm">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             <div class="sb-gen-lib-date">${formatDate(song.generatedAt)}</div>
           </div>
           <button class="sb-gen-lib-delete" data-idx="${idx}" title="Delete">${ICONS.trash}</button>
@@ -2425,15 +2497,15 @@
 
       genLibraryList.querySelectorAll('.sb-gen-lib-item').forEach((el) => {
         el.addEventListener('click', (e) => {
-          // Don't trigger on delete button clicks
+          // Don't trigger on delete button clicks or during generation
           if (e.target.closest('.sb-gen-lib-delete')) return;
+          if (isGenerating) return;
           const idx = parseInt(el.dataset.idx);
           const song = savedSongs[idx];
           if (!song) return;
           showPlayer(song, false);
           audio.play().then(() => {
             genPlayBtn.innerHTML = ICONS.pause;
-            genWaveform.classList.add('playing');
           }).catch(() => {});
         });
       });
@@ -2466,6 +2538,16 @@
       genVideo.style.display = 'none';
       genVideoRow.style.display = 'none';
       if (audio) { audio.pause(); audio = null; }
+    });
+
+    // Close player
+    genCloseBtn.addEventListener('click', () => {
+      if (audio) { audio.pause(); audio = null; }
+      genPlayer.style.display = 'none';
+      genVideo.style.display = 'none';
+      genVideoRow.style.display = 'none';
+      currentSong = null;
+      pendingSong = null;
     });
 
     // Rename saved song
@@ -2648,7 +2730,6 @@
       } else {
         audio.pause();
         genPlayBtn.innerHTML = ICONS.play;
-        genWaveform.classList.remove('playing');
       }
     });
 
@@ -2679,15 +2760,18 @@
 
       const genFutureBtn = document.getElementById('sb-gen-future-btn');
 
+      const activeBtn = mode === 'anti-taste' ? genAntiBtn : mode === 'future-taste' ? genFutureBtn : genBtn;
       isGenerating = true;
       genBtn.disabled = true;
       genAntiBtn.disabled = true;
       genFutureBtn.disabled = true;
-      const statusMessages = { 'anti-taste': 'Finding your blind spots…', 'future-taste': 'Predicting your future taste…' };
-      genBtnLabel.textContent = mode === 'anti-taste' ? 'Daring...' : mode === 'future-taste' ? 'Predicting...' : 'Generating...';
+      genPromptInput.disabled = true;
+      genLibrary.classList.add('sb-gen-disabled');
+      activeBtn.classList.add('sb-gen-active');
+      if (!mode) genBtnLabel.textContent = 'Generating...';
       genPlayer.style.display = 'none';
       genSaveRow.style.display = 'none';
-      setStatus(statusMessages[mode] || 'Analysing your taste…');
+      setStatus('Starting…');
 
       try {
         const userIntent = genPromptInput.value.trim();
@@ -2708,7 +2792,9 @@
             audio: resp.audio,
             mimeType: resp.mimeType,
             prompt: resp.prompt,
-            albumArt: resp.albumArt || null,
+            tags: resp.tags || null,
+            mode: mode || null,
+            albumArt: null,
             modeReason: resp.modeReason || null,
             tasteDrift: resp.tasteDrift || null,
             userIntent: mode === 'anti-taste' ? (userIntent || 'Anti-Taste dare') : mode === 'future-taste' ? (userIntent || 'Future Me') : userIntent,
@@ -2723,6 +2809,11 @@
         genBtn.disabled = false;
         genAntiBtn.disabled = false;
         genFutureBtn.disabled = false;
+        genPromptInput.disabled = false;
+        genLibrary.classList.remove('sb-gen-disabled');
+        genBtn.classList.remove('sb-gen-active');
+        genAntiBtn.classList.remove('sb-gen-active');
+        genFutureBtn.classList.remove('sb-gen-active');
         genBtnLabel.textContent = 'Generate';
       }
     }

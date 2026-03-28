@@ -348,7 +348,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const { provider, model, apiKey, userIntent, mode } = msg;
         if (!apiKey) { sendResponse({ error: 'No API key provided.' }); return; }
 
+        const genTabId = sender.tab?.id;
+        function genProgress(step) {
+          if (genTabId) chrome.tabs.sendMessage(genTabId, { type: 'music-gen-progress', step }).catch(() => {});
+        }
+
         // 1. Load LLM credentials
+        genProgress('Loading LLM…');
         const llmSettings = await chrome.storage.local.get(['sb_provider']);
         const llmProvider = llmSettings.sb_provider;
         let llmAdapter = null, llmModel = null, llmApiKey = null;
@@ -366,6 +372,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         //    not pre-fetched here, to avoid delaying the LLM start.
         let lyriaPrompt = null;
         let modeReason = null;
+        let genTags = null;
         if (llmAdapter) {
           try {
             // Exclude playback control tools — music gen only needs data-fetching + Last.fm tags
@@ -394,12 +401,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const buildSystemPrompt = SYSTEM_PROMPTS[mode] || buildMusicAgentSystemPrompt;
             const defaultIntent = DEFAULT_INTENTS[mode] || 'Generate a track that reflects my overall taste.';
 
+            genProgress('Analysing your taste…');
             const planMessages = [
               { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
               { role: 'user', content: userIntent?.trim() || defaultIntent },
             ];
 
             // Phase 1: Ask LLM what data it needs
+            genProgress('Planning what data to gather…');
             const planResponse = await llmAdapter.sendMessage({
               model: llmModel,
               maxTokens: 800,
@@ -410,6 +419,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
             if (planResponse.finishReason === 'tool_use' && planResponse.toolCalls?.length) {
               // Execute all requested tools and compact the results
+              genProgress('Gathering your listening data…');
               const collectedData = [];
               for (const tc of planResponse.toolCalls) {
                 let result = await executeTool(tc.name, tc.input);
@@ -482,6 +492,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               }
 
               // Phase 2: Single final call with compacted data — produce the prompt
+              genProgress('Crafting the perfect prompt…');
               const finalMessages = [
                 { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
                 { role: 'user', content: `${userIntent?.trim() || defaultIntent}\n\nHere is the data I gathered:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
@@ -498,6 +509,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
+                genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
                 lyriaPrompt = assembleLyriaPrompt(parsed);
               }
             } else {
@@ -506,6 +518,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
+                genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
                 lyriaPrompt = assembleLyriaPrompt(parsed);
               }
             }
@@ -532,30 +545,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence, lastfmTags: fallbackLastfmTags });
         }
 
+        genProgress('Generating audio…');
         const musicAdapter = getMusicGenAdapter(provider);
         const result = await musicAdapter.generate({ prompt: lyriaPrompt, model }, apiKey);
 
-        // Generate album art if image gen is configured
-        let albumArt = null;
-        try {
-          const imgProviderData = await chrome.storage.local.get('sb_image_provider');
-          const imgProvider = imgProviderData.sb_image_provider;
-          if (imgProvider) {
+        // Fire off album art generation in the background (non-blocking)
+        const capturedLyriaPrompt = lyriaPrompt;
+        (async () => {
+          try {
+            const imgProviderData = await chrome.storage.local.get('sb_image_provider');
+            const imgProvider = imgProviderData.sb_image_provider;
+            if (!imgProvider) return;
             const imgKeyData = await chrome.storage.local.get(`sb_image_key_${imgProvider}`);
             const imgModelData = await chrome.storage.local.get(`sb_image_model_${imgProvider}`);
             const imgKey = imgKeyData[`sb_image_key_${imgProvider}`];
             const imgModel = imgModelData[`sb_image_model_${imgProvider}`];
-            if (imgKey) {
-              const imgAdapter = getImageGenAdapter(imgProvider);
-              const artPrompt = `Album cover art for this music: ${lyriaPrompt}. The visual style and aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition. No text, no words, no letters, no typography, no logos.`;
-              const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
-              albumArt = { image: imgResult.image, mimeType: imgResult.mimeType };
-              console.log('[Spotify Brainer] Album art generated');
+            if (!imgKey) return;
+            genProgress('Generating album art…');
+            const imgAdapter = getImageGenAdapter(imgProvider);
+            const artPrompt = `Abstract album cover art for this music: ${capturedLyriaPrompt}. The visual style and aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition. Purely visual and abstract — absolutely no text, no words, no letters, no numbers, no typography, no logos, no writing, no titles, no symbols that resemble text anywhere in the image.`;
+            const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
+            console.log('[Spotify Brainer] Album art generated');
+            if (genTabId) {
+              chrome.tabs.sendMessage(genTabId, {
+                type: 'music-gen-albumart',
+                albumArt: { image: imgResult.image, mimeType: imgResult.mimeType },
+              }).catch(() => {});
             }
+          } catch (e) {
+            console.warn('[Spotify Brainer] Album art generation failed:', e.message);
           }
-        } catch (e) {
-          console.warn('[Spotify Brainer] Album art generation failed:', e.message);
-        }
+          genProgress('');
+        })();
 
         // Include mode-specific insights
         const modeInsights = (mode === 'anti-taste' || mode === 'future-taste') ? {
@@ -578,7 +599,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } : null,
         } : {};
 
-        sendResponse({ ...result, prompt: lyriaPrompt, albumArt, ...modeInsights });
+        sendResponse({ ...result, prompt: lyriaPrompt, tags: genTags, ...modeInsights });
       } catch (e) {
         console.error('[Spotify Brainer] Music generation failed:', e.message);
         sendResponse({ error: e.message });
