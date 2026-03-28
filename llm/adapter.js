@@ -54,4 +54,15 @@ export class LLMAdapter {
     const model = this.models.find((m) => m.id === modelId);
     return model?.contextWindow || 128000;
   }
+
+  /**
+   * Get a model ID by tier ('fast' or 'standard').
+   * Falls back to the first model if no match found.
+   * @param {'fast' | 'standard'} tier
+   * @returns {string}
+   */
+  getModelByTier(tier) {
+    const model = this.models.find((m) => m.tier === tier);
+    return model?.id || this.models[0]?.id;
+  }
 }

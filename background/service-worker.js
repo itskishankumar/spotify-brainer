@@ -403,10 +403,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const llmProvider = llmSettings.sb_provider;
         let llmAdapter = null, llmModel = null, llmApiKey = null;
         if (llmProvider) {
-          const llmData = await chrome.storage.local.get([`sb_apiKey_${llmProvider}`, `sb_model_${llmProvider}`]);
+          const llmData = await chrome.storage.local.get([`sb_apiKey_${llmProvider}`]);
           llmApiKey = llmData[`sb_apiKey_${llmProvider}`];
-          llmModel  = llmData[`sb_model_${llmProvider}`];
-          if (llmApiKey && llmModel) llmAdapter = getAdapter(llmProvider);
+          if (llmApiKey) {
+            llmAdapter = getAdapter(llmProvider);
+            llmModel = llmAdapter.getModelByTier('standard');
+          }
         }
 
         // 2. Agentic loop — the LLM parses the user's intent, calls get_history_taste
@@ -476,10 +478,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
               // Single LLM call with all data — produce the prompt
               genProgress('Crafting the perfect prompt…');
+              const systemResult = buildSystemPrompt(historyMetrics, spotifyData, intelligence);
+              // buildAntiTasteSystemPrompt returns { prompt, genre, category }; others return a string
+              let systemContent = typeof systemResult === 'string' ? systemResult : systemResult.prompt;
+              const antiTasteGenre = typeof systemResult === 'object' ? systemResult.genre : null;
+
+              // Structure: data as context first, user's intent last so it's the final instruction
+              let userContent = '## Listening data\n' + collectedData.join('\n\n');
+              userContent += '\n\n---\n\n## Request\n';
+              if (antiTasteGenre) {
+                userContent += `Your assigned genre is: **${antiTasteGenre}**. Generate a ${antiTasteGenre} track.\n\n`;
+              }
+              userContent += (userIntent?.trim() || defaultIntent);
+
               const messages = [
-                { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
-                { role: 'user', content: `${userIntent?.trim() || defaultIntent}\n\nHere is the user's listening data:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
+                { role: 'system', content: systemContent },
+                { role: 'user', content: userContent },
               ];
+
+              if (antiTasteGenre) {
+                console.log(`[Spotify Brainer] Anti-taste genre picked: ${antiTasteGenre}`);
+              }
 
               const response = await llmAdapter.sendMessage({
                 model: llmModel,
@@ -499,110 +518,124 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 console.warn('[Spotify Brainer] Could not extract JSON from LLM response');
               }
             } else {
-              // --- Generic mode: two-phase approach with LLM tool selection ---
-              const PLAYBACK_TOOLS = new Set([
-                'play_track', 'pause', 'skip_next', 'skip_previous', 'seek',
-                'set_volume', 'set_shuffle', 'set_repeat', 'add_to_queue',
-                'get_devices', 'transfer_playback',
-                'add_to_playlist', 'create_playlist', 'save_tracks', 'remove_saved_tracks',
-                'get_track_credits',
-              ]);
-              const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) => !PLAYBACK_TOOLS.has(t.name));
+              // --- Generic mode: Flash classifies intent → fetch data → Pro generates prompt ---
 
-              genProgress('Planning what data to gather…');
-              const planMessages = [
-                { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
-                { role: 'user', content: userIntent?.trim() || defaultIntent },
-              ];
+              // Step 1: Flash parses intent to decide what extra data to fetch (with params)
+              genProgress('Understanding your request…');
+              const today = new Date().toISOString().slice(0, 10);
+              const fastModel = llmAdapter.getModelByTier('fast');
+              const intentResponse = await llmAdapter.sendMessage({
+                model: fastModel,
+                maxTokens: 512,
+                temperature: 0,
+                messages: [
+                  { role: 'system', content: [
+                    `You are a data router. Today is ${today}. Given a user's music generation request, decide which data sources are needed and with what parameters.`,
+                    'The following data is ALWAYS fetched (do not include these): taste_profile, top_artists_short, top_artists_long, lastfm_tags.',
+                    '',
+                    'Available EXTRA data sources you can request:',
+                    '- history_taste: listening history for a time period. Params: {"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}. Use when the request references a time period, date, month, year, season, "back when", "used to", or past listening. Convert relative dates (e.g. "last September") to absolute YYYY-MM-DD.',
+                    '- history_stats: lifetime listening stats. No params. Use when the request references stats, counts, or hours listened.',
+                    '- history_artists: artist play counts from history. No params. Use when the request references specific past artists or listening patterns.',
+                    '- taste_drift: rising/fading genres & artists. No params. Use when the request references recent trends, "lately", "recently", "getting into", or changing taste.',
+                    '- playlist: a specific playlist. Params: {"name":"playlist name"}. Use when the request references a playlist by name.',
+                    '- recently_played: last 50 played tracks. No params. Use when the request references "just listened", "what I was just playing", or very recent activity.',
+                    '- top_tracks: top tracks. Params: {"time_range":"short"|"medium"|"long"}, default "short". Use when the request references favorite songs or most-played tracks.',
+                    '',
+                    'Output ONLY a JSON array of objects, each with "source" and optional params.',
+                    'Examples:',
+                    '  [{"source":"history_taste","from":"2025-09-01","to":"2025-09-30"},{"source":"taste_drift"}]',
+                    '  [{"source":"playlist","name":"road trips"}]',
+                    '  [{"source":"top_tracks","time_range":"long"}]',
+                    '  []',
+                    'No explanation, no markdown — just the JSON array.',
+                  ].join('\n') },
+                  { role: 'user', content: userIntent?.trim() || defaultIntent },
+                ],
+              }, llmApiKey);
 
-              const planResponse = await llmAdapter.sendMessage({
+              let extraSources = [];
+              try {
+                const match = intentResponse.content?.match(/\[[\s\S]*?\]/);
+                if (match) extraSources = JSON.parse(match[0]);
+              } catch {}
+              console.log('[Spotify Brainer] Flash intent classification:', extraSources);
+
+              // Step 2: Fetch only the EXTRA data Flash requested
+              // Baseline taste data (genres, top artists, tags) is already in the system prompt
+              // via buildBaselineContext — no need to duplicate it here
+              const collectedData = [];
+              if (extraSources.length) {
+                genProgress('Gathering your listening data…');
+              }
+
+              for (const src of extraSources) {
+                const s = typeof src === 'string' ? { source: src } : src;
+                if (s.source === 'history_taste') {
+                  const params = {};
+                  if (s.from) params.from = s.from;
+                  if (s.to) params.to = s.to;
+                  const r = await executeTool('get_history_taste', params);
+                  if (r?.success) collectedData.push(compactToolResult('get_history_taste', params, r));
+                } else if (s.source === 'history_stats') {
+                  const r = await executeTool('get_history_stats', {});
+                  if (r?.success) collectedData.push(compactToolResult('get_history_stats', {}, r));
+                } else if (s.source === 'history_artists') {
+                  const r = await executeTool('get_history_artists', {});
+                  if (r?.success) collectedData.push(compactToolResult('get_history_artists', {}, r));
+                } else if (s.source === 'taste_drift') {
+                  const r = await executeTool('get_taste_drift', {});
+                  if (r?.success) collectedData.push(compactToolResult('get_taste_drift', {}, r));
+                } else if (s.source === 'recently_played') {
+                  const r = await executeTool('get_recently_played', {});
+                  if (r?.success) collectedData.push(compactToolResult('get_recently_played', {}, r));
+                } else if (s.source === 'top_tracks') {
+                  const r = await executeTool('get_top_tracks', { time_range: s.time_range || 'short' });
+                  if (r?.success) collectedData.push(compactToolResult('get_top_tracks', { time_range: s.time_range || 'short' }, r));
+                } else if (s.source === 'playlist' && s.name) {
+                  const r = await executeTool('get_playlists', { name: s.name });
+                  if (r?.success && !r.noExactMatch) {
+                    // Enrich playlist tracks with Last.fm tags
+                    const lastfmKey = await getLastFmApiKey();
+                    if (lastfmKey) {
+                      const tracks = r.data?.flatMap((pl) => pl.tracks || []).filter((t) => t?.name) || [];
+                      const artists = [...new Set(tracks.flatMap((t) => t.artists || []))];
+                      if (artists.length) {
+                        const artistObjs = artists.slice(0, 20).map((name) => ({ name }));
+                        await enrichArtistsWithTags(artistObjs, lastfmKey);
+                        const tags = aggregateTopTags(artistObjs);
+                        if (tags.length) r._lastfmTags = tags.map((t) => t.name);
+                      }
+                    }
+                    collectedData.push(compactToolResult('get_playlists', { name: s.name }, r));
+                  } else if (r?.success) {
+                    collectedData.push(compactToolResult('get_playlists', { name: s.name }, r));
+                  }
+                }
+              }
+
+              // Step 3: Pro generates the Lyria prompt
+              // System prompt has baseline taste context. User message = extra data (if any) + intent.
+              genProgress('Crafting the perfect prompt…');
+              let genUserContent = '';
+              if (collectedData.length) {
+                genUserContent += '## Additional context\n' + collectedData.join('\n\n') + '\n\n---\n\n';
+              }
+              genUserContent += (userIntent?.trim() || defaultIntent);
+              const response = await llmAdapter.sendMessage({
                 model: llmModel,
                 maxTokens: 8192,
                 temperature: 0.3,
-                messages: planMessages,
-                tools: MUSIC_TOOLS,
-                toolChoice: 'any',
+                messages: [
+                  { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
+                  { role: 'user', content: genUserContent },
+                ],
               }, llmApiKey);
 
-              console.log('[Spotify Brainer] Phase 1 result:', { finishReason: planResponse.finishReason, toolCalls: planResponse.toolCalls?.length });
-              if (planResponse.finishReason === 'tool_use' && planResponse.toolCalls?.length) {
-                genProgress('Gathering your listening data…');
-                const collectedData = [];
-                for (const tc of planResponse.toolCalls) {
-                  let result = await executeTool(tc.name, tc.input);
-
-                  if (tc.name === 'get_playlists' && result.noExactMatch && result.data?.length) {
-                    const query = (tc.input.name || '').toLowerCase();
-                    const best = result.data.reduce((a, b) => {
-                      const aScore = a.name.toLowerCase().includes(query) ? 1 : 0;
-                      const bScore = b.name.toLowerCase().includes(query) ? 1 : 0;
-                      return bScore > aScore ? b : a;
-                    }, result.data[0]);
-                    result = await executeTool('get_playlists', { name: best.name });
-                  }
-
-                  const lastfmKey = await getLastFmApiKey();
-                  if (lastfmKey && result.success && result.data) {
-                    const d = result.data;
-                    let allTracks = [];
-                    if (Array.isArray(d) && d.length && d[0]?.name) {
-                      allTracks = d;
-                    } else {
-                      const items = Array.isArray(d) ? d : [d];
-                      for (const item of items) {
-                        if (item.tracks?.length) allTracks.push(...item.tracks);
-                        if (item.topTracks?.length) allTracks.push(...item.topTracks);
-                      }
-                    }
-                    if (allTracks.length) {
-                      const artistNames = new Set();
-                      const trackPairs = [];
-                      for (const t of allTracks) {
-                        const artists = t.artists || [];
-                        const artistStr = typeof artists[0] === 'string' ? artists[0] : artists[0]?.name;
-                        if (artistStr) {
-                          artistNames.add(artistStr);
-                          trackPairs.push({ name: `${t.name} \u2014 ${artistStr}` });
-                        }
-                      }
-                      const artistObjs = [...artistNames].map((n) => ({ name: n }));
-                      await enrichArtistsWithTags(artistObjs, lastfmKey);
-                      await enrichTracksWithTags(trackPairs, lastfmKey);
-                      const tags = aggregateTopTags([...artistObjs, ...trackPairs]);
-                      if (tags.length) {
-                        result._lastfmTags = tags.map((t) => t.name);
-                      }
-                    }
-                  }
-                  collectedData.push(compactToolResult(tc.name, tc.input, result));
-                }
-
-                genProgress('Crafting the perfect prompt…');
-                const finalMessages = [
-                  { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
-                  { role: 'user', content: `${userIntent?.trim() || defaultIntent}\n\nHere is the data I gathered:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
-                ];
-
-                const finalResponse = await llmAdapter.sendMessage({
-                  model: llmModel,
-                  maxTokens: 8192,
-                  temperature: 0.3,
-                  messages: finalMessages,
-                }, llmApiKey);
-
-                const parsed = extractLyriaJson(finalResponse.content);
-                if (parsed) {
-                  modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
-                  genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
-                  lyriaPrompt = assembleLyriaPrompt(parsed);
-                }
-              } else {
-                const parsed = extractLyriaJson(planResponse.content);
-                if (parsed) {
-                  modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
-                  genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
-                  lyriaPrompt = assembleLyriaPrompt(parsed);
-                }
+              const parsed = extractLyriaJson(response.content);
+              if (parsed) {
+                genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
+                lyriaPrompt = assembleLyriaPrompt(parsed);
               }
             }
           } catch (e) {
@@ -1272,6 +1305,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
     try {
       const adapter = getAdapter(msg.provider);
+      const chatModel = adapter.getModelByTier('standard');
       const systemPrompt = buildSystemPrompt();
 
       // Build messages array with system prompt
@@ -1291,7 +1325,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
         const request = {
           messages,
-          model: msg.model,
+          model: chatModel,
           maxTokens: 8192,
           stream: true,
           tools: SPOTIFY_TOOLS,

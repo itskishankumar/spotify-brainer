@@ -7,10 +7,10 @@ export class AnthropicAdapter extends LLMAdapter {
   displayName = 'Claude (Anthropic)';
   apiKeyUrl = 'https://console.anthropic.com/settings/keys';
   models = [
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 1000000 },
-    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000 },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
-    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 1000000, tier: 'standard' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000, tier: 'standard' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000, tier: 'fast' },
+    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000, tier: 'standard' },
   ];
 
   async validate(apiKey) {

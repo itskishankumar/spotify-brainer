@@ -1,10 +1,10 @@
 // Spotify Brainer — Lyria Prompt Builder
 //
-// Single agentic LLM call that:
-//   1. Parses the user's intent (understands date references, mood)
-//   2. Calls get_history_taste with date params if a period is mentioned
-//   3. Uses its music knowledge of the specific artists/tracks to output a Lyria JSON prompt
+// Two-step architecture:
+//   1. Fast model classifies user intent → determines what data to fetch
+//   2. Standard model receives all pre-fetched data → outputs a Lyria JSON prompt
 //
+// Anti-taste & future-taste modes use deterministic data fetching (no intent classification).
 // buildFallbackLyriaPrompt() is used when no LLM is configured.
 
 // ---------------------------------------------------------------------------
@@ -17,29 +17,18 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
 
   lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria.`);
   lines.push('');
-  lines.push('Your job:');
-  lines.push('1. Understand the user\'s intent — a time period, a playlist, a mood, a specific artist/track vibe, or a general taste query');
-  lines.push('2. Gather the musical data you need using tools:');
-  lines.push('   - Time period → call get_history_taste with from/to dates');
-  lines.push('   - Playlist reference → call get_playlists to find it and its tracks, then call get_lastfm_tags with those tracks to get sonic metadata');
-  lines.push('   - General taste → call get_top_artists or get_top_tracks, then get_lastfm_tags for the results');
-  lines.push('   - Future/trend reference → call get_taste_drift to see what genres and artists are rising vs fading, then lean into the emerging direction');
-  lines.push('   - No specific reference → use the baseline profile context below');
-  lines.push('3. Use the lastfmTags (per-artist, per-track, and aggregated) plus your music knowledge to translate the sound into a Lyria prompt');
-  lines.push('4. Output the final Lyria prompt as a JSON object — nothing else');
+  lines.push('## How to use the request vs the taste profile');
+  lines.push('1. START from the user\'s request. If they say "romantic", think: what does romantic music sound like? Build that first.');
+  lines.push('2. THEN use the taste profile below ONLY to decide the flavor — which instruments, production style, and subgenre fit this user\'s ears.');
+  lines.push('3. The request is the DISH. The taste profile is the SEASONING. A "romantic" request from a metal fan should sound like a power ballad, not a pop love song.');
   lines.push('');
-  lines.push('## Tool rules');
-  lines.push('- You have access to all Spotify data tools: playlists, top artists/tracks, history, taste profile, search, and more');
-  lines.push('- Use get_lastfm_tags to fetch detailed genre/mood/style tags for specific artists or tracks — pass artists and/or tracks in a single call');
-  lines.push('- get_history_taste auto-enriches results with Last.fm tags; for playlists or search results, call get_lastfm_tags explicitly');
-  lines.push('- Keep tool calls efficient — fetch what you need, then produce the prompt');
+  lines.push('Example: "something romantic" + taste profile shows indie/shoegaze → output should be a dreamy, romantic shoegaze track with lush reverb and intimate vocals. The genre comes from the request interpreted through the user\'s lens, NOT from the taste profile with "romantic" sprinkled on top.');
   lines.push('');
   lines.push('## Lyria output rules');
   lines.push('- NEVER include artist names, band names, song titles, or album names — copyright filter will block generation');
-  lines.push('- Use your knowledge of those specific tracks/artists to infer accurate BPM, key, instruments, and production style');
+  lines.push('- Use your knowledge of those specific artists to infer production style and instrument choices');
   lines.push('- Use generic instrument descriptions (e.g. "synth arpeggios", "fingerpicked acoustic guitar", "808 sub bass")');
-  lines.push('- If lastfmTags are present (in the profile below or in tool responses), use them as your PRIMARY source of sonic/style info — they describe subgenres, moods, and production styles more precisely than generic genre labels (e.g. "shoegaze", "dream-pop", "lo-fi", "atmospheric", "melancholic")');
-  lines.push('- Per-artist lastfmTags tell you each artist\'s specific sound; the aggregated lastfmTags show the overall vibe — use both to pick instruments, production style, and mood');
+  lines.push('- Use lastfmTags to pick the right subgenre and production style — they\'re more precise than broad genre labels');
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
@@ -47,17 +36,34 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
   lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["dreamy","shoegaze","lo-fi"] or ["trap","dark","heavy"]). These are displayed to the user as labels.');
   lines.push('');
 
-  // Inject overall taste profile as baseline context
-  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
+  const ctx = buildSonicPalette(intelligence, historyMetrics, spotifyData, lastfmTags);
   if (Object.keys(ctx).length) {
-    lines.push('## Overall taste profile (baseline — use when no period is specified)');
+    lines.push('## User\'s sonic palette (use to FLAVOR the request, not to define it)');
     lines.push(JSON.stringify(ctx, null, 2));
   }
 
   return lines.join('\n');
 }
 
-function buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags = []) {
+// Sonic palette: production cues only — no genres, no artist names.
+// Used by generic mode so the request drives genre, not the taste profile.
+function buildSonicPalette(intelligence, historyMetrics, spotifyData, lastfmTags = []) {
+  const ctx = {};
+
+  // Production-oriented tags (e.g. "atmospheric", "lo-fi", "heavy") — describe sound, not genre
+  if (lastfmTags?.length) {
+    ctx.soundTags = lastfmTags.map((t) => t.name);
+  }
+
+  if (intelligence?.personalityTags?.length) ctx.personalityTags = intelligence.personalityTags;
+  if (intelligence?.tempoPreference) ctx.tempoPreference = intelligence.tempoPreference;
+
+  return ctx;
+}
+
+// Full baseline context: artists, genres, drift, evolution — everything.
+// Used by anti-taste and future-taste where the LLM needs to understand what the user listens to.
+function buildFullContext(intelligence, historyMetrics, spotifyData, lastfmTags = []) {
   const ctx = {};
 
   if (intelligence?.topArtistsAllTime?.length) {
@@ -101,7 +107,6 @@ function buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmT
       decliningGenres: drift.genreDrift?.declining?.slice(0, 3).map((g) => g.genre),
       predictions: drift.predictions,
     };
-    // Include historical drift from GDPR data
     if (drift.historical) {
       ctx.tasteDrift.historical = {
         risingArtists: drift.historical.risingArtists?.slice(0, 5).map((a) => `${a.name} (${a.share12m}%→${a.share3m}%${a.momentum > 0 ? ' accelerating' : a.momentum < -0.2 ? ' decelerating' : ''})`),
@@ -170,7 +175,7 @@ export function buildFutureTasteSystemPrompt(historyMetrics, spotifyData, intell
   lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["futuristic","ambient","ethereal"]). These are displayed to the user as labels.');
   lines.push('');
 
-  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
+  const ctx = buildFullContext(intelligence, historyMetrics, spotifyData, lastfmTags);
   if (Object.keys(ctx).length) {
     lines.push('## Current taste profile + drift data (extrapolate FORWARD from this)');
     lines.push(JSON.stringify(ctx, null, 2));
@@ -321,6 +326,10 @@ function pickAntiTasteCandidates(userGenres) {
 // and generate something from genres/styles/decades they never listen to,
 // while keeping just enough familiar elements to make it palatable.
 // ---------------------------------------------------------------------------
+/**
+ * Returns { prompt: string, genre: string, category: string }
+ * The caller MUST use `genre` in the user message so the LLM can't miss it.
+ */
 export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intelligence, lastfmTags = []) {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [];
@@ -365,13 +374,13 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
   lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["afrobeats","groovy","percussive"]). These are displayed to the user as labels.');
   lines.push('');
 
-  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
+  const ctx = buildFullContext(intelligence, historyMetrics, spotifyData, lastfmTags);
   if (Object.keys(ctx).length) {
     lines.push('## Current taste profile (this is what you\'re breaking away FROM)');
     lines.push(JSON.stringify(ctx, null, 2));
   }
 
-  return lines.join('\n');
+  return { prompt: lines.join('\n'), genre: pick.genre, category: pick.category };
 }
 
 // ---------------------------------------------------------------------------

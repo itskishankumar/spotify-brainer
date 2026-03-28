@@ -7,9 +7,9 @@ export class GeminiAdapter extends LLMAdapter {
   displayName = 'Google Gemini';
   apiKeyUrl = 'https://aistudio.google.com/apikey';
   models = [
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1048576 },
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576 },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576 },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1048576, tier: 'fast' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576, tier: 'standard' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576, tier: 'fast' },
   ];
 
   async validate(apiKey) {

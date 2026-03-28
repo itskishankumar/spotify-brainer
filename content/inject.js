@@ -111,10 +111,6 @@
           </select>
         </div>
         <div class="sb-settings-group">
-          <label>Model</label>
-          <select id="sb-model-select"></select>
-        </div>
-        <div class="sb-settings-group">
           <label>API Key</label>
           <input type="password" id="sb-api-key" placeholder="Enter your API key" />
           <span class="sb-settings-hint" id="sb-api-key-hint">
@@ -426,7 +422,6 @@
   const contextDot = document.getElementById('sb-context-dot');
   const convListEl = document.getElementById('sb-conv-list');
   const providerSelect = document.getElementById('sb-provider-select');
-  const modelSelect = document.getElementById('sb-model-select');
   const apiKeyInput = document.getElementById('sb-api-key');
   const apiKeyLink = document.getElementById('sb-api-key-link');
   const resizeHandle = document.getElementById('spotify-brainer-resize');
@@ -1040,33 +1035,18 @@
     },
   };
 
-  function updateModelSelect() {
+  function updateProviderSettings() {
     const provider = providerSelect.value;
-    const models = PROVIDER_MODELS[provider]?.models || [];
-    modelSelect.innerHTML = models
-      .map((m) => `<option value="${m.id}">${m.name} (${Math.round(m.context / 1000)}K)</option>`)
-      .join('');
     apiKeyLink.href = PROVIDER_MODELS[provider]?.keyUrl || '#';
-    // Load saved key for this provider, and ensure a model is always persisted
-    chrome.storage.local.get([`sb_apiKey_${provider}`, `sb_model_${provider}`], (data) => {
-      if (data[`sb_apiKey_${provider}`]) apiKeyInput.value = data[`sb_apiKey_${provider}`];
-      else apiKeyInput.value = '';
-      if (data[`sb_model_${provider}`]) {
-        modelSelect.value = data[`sb_model_${provider}`];
-      } else {
-        chrome.storage.local.set({ [`sb_model_${provider}`]: modelSelect.value });
-      }
+    chrome.storage.local.get([`sb_apiKey_${provider}`], (data) => {
+      apiKeyInput.value = data[`sb_apiKey_${provider}`] || '';
       if (typeof updateHintVisibility === 'function') updateHintVisibility();
     });
   }
 
   providerSelect.addEventListener('change', () => {
-    updateModelSelect();
+    updateProviderSettings();
     chrome.storage.local.set({ sb_provider: providerSelect.value });
-  });
-
-  modelSelect.addEventListener('change', () => {
-    chrome.storage.local.set({ [`sb_model_${providerSelect.value}`]: modelSelect.value });
   });
 
   apiKeyInput.addEventListener('change', () => {
@@ -1392,7 +1372,6 @@
       const response = await chrome.runtime.sendMessage({
         type: 'llm-test',
         provider: providerSelect.value,
-        model: modelSelect.value,
         apiKey: apiKeyInput.value,
       });
       btn.textContent = 'Test Connection';
@@ -1788,16 +1767,12 @@
       // Get settings — use the provider value we know, fetch all possibly-relevant keys
       const provider = providerSelect.value || 'anthropic';
       const settings = await chrome.storage.local.get([
-        'sb_provider', `sb_apiKey_${provider}`, `sb_model_${provider}`,
+        'sb_provider', `sb_apiKey_${provider}`,
       ]);
       const apiKey = settings[`sb_apiKey_${provider}`];
-      const model = settings[`sb_model_${provider}`] || PROVIDER_MODELS[provider]?.models[0]?.id;
 
       if (!apiKey) {
         throw new Error('No API key set. Open Settings to configure.');
-      }
-      if (!model) {
-        throw new Error('No model selected. Open Settings to configure.');
       }
       // Open port for streaming
       const port = chrome.runtime.connect({ name: 'llm-stream' });
@@ -1884,7 +1859,6 @@
       port.postMessage({
         type: 'llm-stream',
         provider,
-        model,
         apiKey,
         messages: conv.messages.slice(0, -1), // Don't include the empty assistant msg
       });
@@ -2051,7 +2025,7 @@
     if (data.sb_provider) {
       providerSelect.value = data.sb_provider;
     }
-    updateModelSelect();
+    updateProviderSettings();
     if (data.sb_conversations) {
       conversations = data.sb_conversations;
     }

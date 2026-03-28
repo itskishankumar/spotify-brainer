@@ -7,9 +7,9 @@ export class OpenAIAdapter extends LLMAdapter {
   displayName = 'OpenAI (GPT)';
   apiKeyUrl = 'https://platform.openai.com/api-keys';
   models = [
-    { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000 },
-    { id: 'o1', name: 'o1', contextWindow: 200000 },
+    { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000, tier: 'standard' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000, tier: 'fast' },
+    { id: 'o1', name: 'o1', contextWindow: 200000, tier: 'standard' },
   ];
 
   async validate(apiKey) {
