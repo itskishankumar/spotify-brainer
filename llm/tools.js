@@ -315,6 +315,11 @@ export const SPOTIFY_TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_taste_drift',
+    description: 'Get the taste drift vector — how the user\'s taste is changing over time. Two data sources: (1) Spotify API drift: compares long-term (all time) vs short-term (last 4 weeks) top artists/tracks for emerging/fading artists, genre shifts, decade shifts, popularity drift, and velocity. (2) Historical drift (from GDPR data): compares actual play counts across 12-month vs 3-month vs 1-month windows showing rising/fading artists with momentum indicators, new discoveries, artist concentration changes, and monthly volume trends. The historical section is more granular and reliable when available.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'get_history_stats',
     description: 'Get listening stats and engagement metrics from GDPR history. Optionally filter to a specific date range to see stats for a particular period (e.g. a specific month or year).',
     input_schema: {

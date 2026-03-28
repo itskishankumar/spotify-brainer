@@ -267,8 +267,12 @@
             <span id="sb-gen-btn-label">Generate</span>
           </button>
           <button id="sb-gen-anti-btn" class="sb-gen-anti-btn" title="Generate something outside your comfort zone">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            <svg viewBox="0 0 5120 5120" width="16" height="16" fill="currentColor"><g transform="translate(0,5120) scale(1,-1)"><path d="M2078 4629c-20-11-28-39-63-207-36-178-43-171 198-218l138-27 24 23c53 49 21 101-72 120-32 6-62 13-68 14-5 2 13 15 42 29 144 73 355 110 519 89 73-9 93-8 111 3 30 20 38 51 19 80-22 34-50 39-221 40-180 0-271-17-430-80-60-24-111-42-113-40-2 2 1 27 7 55 15 71 14 87-9 110-22 22-55 25-82 9z"/><path d="M3185 4517c-55-26-108-74-129-116-20-39-29-87-106-541-39-228-73-427-76-441l-5-27-48 48c-103 103-261 105-365 6-18-17-38-40-44-51-10-19-11-19-49-1-21 10-70 21-108 24-87 5-157-21-210-79l-34-38-57 26c-47 21-66 25-118 21-95-8-155-49-198-133-25-48-34-175-44-640-7-336 2-500 36-643 26-107 57-168 130-247 84-94 120-198 120-351l0-74-88 0c-63 0-94-4-110-16l-22-15 0-435c0-421 1-435 20-454 20-20 33-20 829-20 804 0 853 2 873 33 4 7 8 204 8 438 0 509 10 470-123 477l-87 5 0 107 0 107 113 109c61 60 153 140 202 179 50 38 94 76 100 85 16 24 72 175 114 305 83 259 89 364 28 488-44 89-91 144-160 190-64 42-161 77-217 77-35 0-40 3-40 23 0 13 50 311 111 663 118 681 121 712 81 790-61 118-214 175-327 121zm173-124c13-8 33-35 44-60l20-46-116-676c-64-372-116-679-116-682 0-3-48-9-107-12-60-4-123-9-141-13-31-6-33-5-28 17 4 13 58 330 121 704 63 374 120 692 126 707 31 77 127 107 197 61zm-663-1013c73-35 75-43 75-339 0-277-4-305-49-345-13-12-41-21-74-24-46-4-57-1-84 22-55 47-63 90-63 361 0 235 1 243 23 276 23 35 78 69 111 69 11 0 38-9 61-20zm-387-100c67-30 72-52 72-299 0-115-4-221-10-236-5-14-22-37-36-50-23-21-37-25-91-25-71 0-105 16-129 61-20 40-20 444 0 494 29 69 111 93 194 55zm-382-77c50-32 56-67 52-306-3-191-6-227-21-255-37-68-134-79-188-21-45 48-51 101-41 320 12 236 18 254 102 283 21 7 71-4 96-21zm1536-436c120-59 206-194 194-307-7-70-61-261-118-412l-43-116-105-84c-135-109-263-230-301-284-28-42-29-45-29-173l0-131-524 0-524 0-7 98c-14 190-62 312-167 428-90 99-113 198-125 528l-6 188 33-17c49-25 127-30 193-11 45 13 64 26 100 67 44 51 45 51 70 34 14-9 57-21 96-26 86-12 137 0 202 46l47 33 22-23c29-30 73-51 130-60 35-6 52-16 79-47 48-56 79-68 202-78 60-5 113-11 118-14 5-3-16-30-45-59-58-58-66-85-34-117 33-33 64-25 130 34 33 30 81 63 108 75 94 42 97 44 100 82 2 21-3 40-10 47-32 26-262 71-366 72-46 0-112 21-112 36 0 2 16 19 36 36 36 32 66 82 78 130 5 23 13 28 52 34 108 16 207 22 334 20 125-1 139-4 192-29zm-192-1970l0-344-542-6c-298-4-633-7-745-7l-203 0 0 350 0 350 745 0 745 0 0-343z"/><path d="M1943 890c-41-25-53-48-53-104 0-84 87-137 164-101 82 39 90 158 14 205-42 25-84 25-125 0z"/><path d="M4059 4439c-19-19-21-28-14-96l7-76-64 35c-87 48-220 98-262 98-38 0-56-20-56-63 0-33 8-38 130-86 58-22 122-52 144-64l39-24-64-7c-93-11-119-28-119-78 0-19 8-33 26-45 25-16 35-16 178 1 83 10 159 22 168 27 37 20 39 42 17 201-16 124-24 157-41 175-27 29-62 29-89 2z"/></g></svg>
             Anti-Taste
+          </button>
+          <button id="sb-gen-future-btn" class="sb-gen-future-btn" title="Generate a track from your predicted future taste">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21,10.12H14.22L16.96,7.3C14.23,4.6 9.81,4.5 7.08,7.2C4.35,9.91 4.35,14.28 7.08,17C9.81,19.7 14.23,19.7 16.96,17C18.32,15.65 19,14.08 19,12.1H21C21,14.08 20.12,16.65 18.36,18.39C14.85,21.87 9.15,21.87 5.64,18.39C2.14,14.92 2.11,9.28 5.62,5.81C9.13,2.34 14.76,2.34 18.27,5.81L21,3V10.12M12.5,8V12.25L16,14.33L15.28,15.54L11,13V8H12.5Z"/></svg>
+            Future Me
           </button>
         </div>
 
@@ -277,7 +281,13 @@
         <!-- Audio player -->
         <div id="sb-gen-player" class="sb-gen-player" style="display:none">
           <img id="sb-gen-album-art" class="sb-gen-album-art" style="display:none" />
-          <div id="sb-gen-track-name" class="sb-gen-track-name"></div>
+          <div class="sb-gen-track-name-row">
+            <div id="sb-gen-track-name" class="sb-gen-track-name"></div>
+            <button id="sb-gen-rename-btn" class="sb-gen-rename-btn" title="Rename" style="display:none">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+          </div>
+          <input id="sb-gen-rename-input" class="sb-gen-rename-input" type="text" maxlength="60" style="display:none" />
           <div class="sb-gen-waveform" id="sb-gen-waveform">
             ${Array.from({length: 40}, (_, i) => `<div class="sb-gen-bar" style="animation-delay:${(i * 0.05).toFixed(2)}s"></div>`).join('')}
           </div>
@@ -306,9 +316,14 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
               <span id="sb-gen-video-btn-label">Generate Video</span>
             </button>
+            <button id="sb-gen-export-btn" class="sb-gen-export-btn">
+              ${ICONS.export}
+              Export MP3
+            </button>
             <span class="sb-gen-video-status" id="sb-gen-video-status"></span>
           </div>
           <video id="sb-gen-video" class="sb-gen-video" style="display:none" controls loop></video>
+          <div id="sb-gen-insights" class="sb-gen-insights" style="display:none"></div>
           <div class="sb-gen-prompt-preview">
             <details>
               <summary>View prompt used</summary>
@@ -2267,16 +2282,20 @@
     const genPromptUsed = document.getElementById('sb-gen-prompt-used');
     const genWaveform = document.getElementById('sb-gen-waveform');
     const genTrackName = document.getElementById('sb-gen-track-name');
+    const genRenameBtn = document.getElementById('sb-gen-rename-btn');
+    const genRenameInput = document.getElementById('sb-gen-rename-input');
     const genSaveRow = document.getElementById('sb-gen-save-row');
     const genNameInput = document.getElementById('sb-gen-name-input');
     const genSaveBtn = document.getElementById('sb-gen-save-btn');
     const genDiscardBtn = document.getElementById('sb-gen-discard-btn');
     const genAlbumArt = document.getElementById('sb-gen-album-art');
+    const genInsights = document.getElementById('sb-gen-insights');
     const genVideoRow = document.getElementById('sb-gen-video-row');
     const genVideoBtn = document.getElementById('sb-gen-video-btn');
     const genVideoBtnLabel = document.getElementById('sb-gen-video-btn-label');
     const genVideoStatus = document.getElementById('sb-gen-video-status');
     const genVideo = document.getElementById('sb-gen-video');
+    const genExportBtn = document.getElementById('sb-gen-export-btn');
     const genLibrary = document.getElementById('sb-gen-library');
     const genLibraryList = document.getElementById('sb-gen-library-list');
 
@@ -2288,7 +2307,7 @@
     let savedSongs = [];      // persisted songs: [{id, audio, mimeType, prompt, userIntent, generatedAt}]
 
     const SONGS_KEY = 'sb_gen_songs';
-    const MAX_SONGS = 8;
+    const MAX_SONGS = Infinity;
 
     // Load saved songs from storage
     chrome.storage.local.get(SONGS_KEY, (data) => {
@@ -2346,6 +2365,9 @@
       loadAudio(song.audio, song.mimeType);
       genPromptUsed.textContent = song.prompt || '';
       genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
+      genRenameBtn.style.display = showSaveActions ? 'none' : 'inline-flex';
+      genRenameInput.style.display = 'none';
+      genTrackName.style.display = 'block';
       if (song.albumArt) {
         genAlbumArt.src = `data:${song.albumArt.mimeType};base64,${song.albumArt.image}`;
         genAlbumArt.style.display = 'block';
@@ -2364,6 +2386,14 @@
         genVideoBtn.disabled = false;
         genVideoStatus.textContent = '';
       }
+      // Render mode insights (anti-taste / future-taste)
+      if (song.modeReason) {
+        genInsights.innerHTML = `<div class="sb-gen-insights-reason">${escapeHtml(song.modeReason)}</div>`;
+        genInsights.style.display = 'block';
+      } else {
+        genInsights.style.display = 'none';
+      }
+
       genPlayer.style.display = 'flex';
       genSaveRow.style.display = showSaveActions ? 'block' : 'none';
       if (showSaveActions) {
@@ -2393,9 +2423,11 @@
         </div>
       `).join('');
 
-      genLibraryList.querySelectorAll('.sb-gen-lib-play, .sb-gen-lib-art').forEach((el) => {
-        el.addEventListener('click', () => {
-          const idx = parseInt(el.closest('.sb-gen-lib-item').dataset.idx);
+      genLibraryList.querySelectorAll('.sb-gen-lib-item').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          // Don't trigger on delete button clicks
+          if (e.target.closest('.sb-gen-lib-delete')) return;
+          const idx = parseInt(el.dataset.idx);
           const song = savedSongs[idx];
           if (!song) return;
           showPlayer(song, false);
@@ -2434,6 +2466,121 @@
       genVideo.style.display = 'none';
       genVideoRow.style.display = 'none';
       if (audio) { audio.pause(); audio = null; }
+    });
+
+    // Rename saved song
+    genRenameBtn.addEventListener('click', () => {
+      genRenameInput.value = genTrackName.textContent;
+      genTrackName.style.display = 'none';
+      genRenameBtn.style.display = 'none';
+      genRenameInput.style.display = 'block';
+      genRenameInput.focus();
+      genRenameInput.select();
+    });
+
+    function commitRename() {
+      const newName = genRenameInput.value.trim();
+      if (newName && currentSong) {
+        currentSong.name = newName;
+        genTrackName.textContent = newName;
+        // Persist if it's a saved song
+        const idx = savedSongs.indexOf(currentSong);
+        if (idx !== -1) { persistSongs(); renderLibrary(); }
+      }
+      genRenameInput.style.display = 'none';
+      genTrackName.style.display = 'block';
+      genRenameBtn.style.display = 'inline-flex';
+    }
+
+    genRenameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commitRename();
+      if (e.key === 'Escape') {
+        genRenameInput.style.display = 'none';
+        genTrackName.style.display = 'block';
+        genRenameBtn.style.display = 'inline-flex';
+      }
+    });
+    genRenameInput.addEventListener('blur', commitRename);
+
+    // Export MP3 with ID3v2 tags (title + cover art)
+    genExportBtn.addEventListener('click', () => {
+      if (!currentSong) return;
+      const title = currentSong.name || currentSong.userIntent || 'Spotify Brainer';
+      const artist = 'Spotify Brainer';
+
+      // Decode the base64 audio
+      const audioBytes = Uint8Array.from(atob(currentSong.audio), (c) => c.charCodeAt(0));
+
+      // Build ID3v2.3 tag
+      const frames = [];
+
+      // Text frame helper (TIT2, TPE1, etc.)
+      function textFrame(id, text) {
+        const encoded = new TextEncoder().encode(text);
+        // Frame: 4-byte ID + 4-byte size + 2-byte flags + 1-byte encoding (0=ISO) + text
+        const size = 1 + encoded.length;
+        const buf = new Uint8Array(10 + size);
+        buf.set(new TextEncoder().encode(id), 0);
+        buf[4] = (size >> 24) & 0xff; buf[5] = (size >> 16) & 0xff;
+        buf[6] = (size >> 8) & 0xff; buf[7] = size & 0xff;
+        // flags = 0, encoding = 0 (ISO-8859-1)
+        buf.set(encoded, 11);
+        return buf;
+      }
+
+      frames.push(textFrame('TIT2', title));
+      frames.push(textFrame('TPE1', artist));
+
+      // APIC frame (cover art) if available
+      if (currentSong.albumArt) {
+        const imgBytes = Uint8Array.from(atob(currentSong.albumArt.image), (c) => c.charCodeAt(0));
+        const mimeStr = currentSong.albumArt.mimeType || 'image/png';
+        const mimeEncoded = new TextEncoder().encode(mimeStr);
+        // APIC: encoding(1) + mime+null + picture_type(1) + description_null(1) + image_data
+        const apicPayload = 1 + mimeEncoded.length + 1 + 1 + 1 + imgBytes.length;
+        const apic = new Uint8Array(10 + apicPayload);
+        apic.set(new TextEncoder().encode('APIC'), 0);
+        apic[4] = (apicPayload >> 24) & 0xff; apic[5] = (apicPayload >> 16) & 0xff;
+        apic[6] = (apicPayload >> 8) & 0xff; apic[7] = apicPayload & 0xff;
+        let offset = 10;
+        apic[offset++] = 0; // encoding = ISO-8859-1
+        apic.set(mimeEncoded, offset); offset += mimeEncoded.length;
+        apic[offset++] = 0; // null terminator for mime
+        apic[offset++] = 3; // picture type: cover (front)
+        apic[offset++] = 0; // null terminator for description
+        apic.set(imgBytes, offset);
+        frames.push(apic);
+      }
+
+      // Calculate total frames size
+      const framesSize = frames.reduce((s, f) => s + f.length, 0);
+
+      // ID3v2.3 header: "ID3" + version(2bytes) + flags(1) + size(4 syncsafe)
+      const header = new Uint8Array(10);
+      header.set(new TextEncoder().encode('ID3'), 0);
+      header[3] = 3; header[4] = 0; // version 2.3.0
+      header[5] = 0; // flags
+      // Syncsafe integer for size
+      header[6] = (framesSize >> 21) & 0x7f;
+      header[7] = (framesSize >> 14) & 0x7f;
+      header[8] = (framesSize >> 7) & 0x7f;
+      header[9] = framesSize & 0x7f;
+
+      // Combine: header + frames + original audio
+      const result = new Uint8Array(header.length + framesSize + audioBytes.length);
+      let pos = 0;
+      result.set(header, pos); pos += header.length;
+      for (const frame of frames) { result.set(frame, pos); pos += frame.length; }
+      result.set(audioBytes, pos);
+
+      // Download
+      const blob = new Blob([result], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9 _-]/g, '')}.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
     });
 
     genVideoBtn.addEventListener('click', async () => {
@@ -2530,13 +2677,17 @@
         return;
       }
 
+      const genFutureBtn = document.getElementById('sb-gen-future-btn');
+
       isGenerating = true;
       genBtn.disabled = true;
       genAntiBtn.disabled = true;
-      genBtnLabel.textContent = mode === 'anti-taste' ? 'Daring...' : 'Generating...';
+      genFutureBtn.disabled = true;
+      const statusMessages = { 'anti-taste': 'Finding your blind spots…', 'future-taste': 'Predicting your future taste…' };
+      genBtnLabel.textContent = mode === 'anti-taste' ? 'Daring...' : mode === 'future-taste' ? 'Predicting...' : 'Generating...';
       genPlayer.style.display = 'none';
       genSaveRow.style.display = 'none';
-      setStatus(mode === 'anti-taste' ? 'Finding your blind spots…' : 'Analysing your taste…');
+      setStatus(statusMessages[mode] || 'Analysing your taste…');
 
       try {
         const userIntent = genPromptInput.value.trim();
@@ -2558,7 +2709,9 @@
             mimeType: resp.mimeType,
             prompt: resp.prompt,
             albumArt: resp.albumArt || null,
-            userIntent: mode === 'anti-taste' ? (userIntent || 'Anti-Taste dare') : userIntent,
+            modeReason: resp.modeReason || null,
+            tasteDrift: resp.tasteDrift || null,
+            userIntent: mode === 'anti-taste' ? (userIntent || 'Anti-Taste dare') : mode === 'future-taste' ? (userIntent || 'Future Me') : userIntent,
             generatedAt: Date.now(),
           };
           showPlayer(pendingSong, true);
@@ -2569,12 +2722,14 @@
         isGenerating = false;
         genBtn.disabled = false;
         genAntiBtn.disabled = false;
+        genFutureBtn.disabled = false;
         genBtnLabel.textContent = 'Generate';
       }
     }
 
     genBtn.addEventListener('click', () => doGenerate(null));
     genAntiBtn.addEventListener('click', () => doGenerate('anti-taste'));
+    document.getElementById('sb-gen-future-btn').addEventListener('click', () => doGenerate('future-taste'));
   })();
 
   // --- Init ---

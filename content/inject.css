@@ -1346,6 +1346,39 @@ body.spotify-brainer-open {
   height: 16px;
 }
 
+.sb-gen-future-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid #535353;
+  border-radius: 24px;
+  color: #b3b3b3;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.sb-gen-future-btn:hover:not(:disabled) {
+  border-color: #5b8def;
+  color: #5b8def;
+  background: rgba(91, 141, 239, 0.08);
+}
+
+.sb-gen-future-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-gen-future-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .sb-gen-btn:hover:not(:disabled) {
   background: #1ed760;
   transform: scale(1.02);
@@ -1433,11 +1466,43 @@ body.spotify-brainer-open {
   color: #a7a7a7;
 }
 
+.sb-gen-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #282828;
+  border: 1px solid #535353;
+  color: #b3b3b3;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sb-gen-export-btn:hover {
+  background: #333;
+  color: #fff;
+}
+
+.sb-gen-export-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
 .sb-gen-video {
   width: 100%;
   border-radius: 8px;
   max-height: 240px;
   background: #000;
+}
+
+.sb-gen-track-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .sb-gen-track-name {
@@ -1448,6 +1513,38 @@ body.spotify-brainer-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sb-gen-rename-btn {
+  background: none;
+  border: none;
+  color: #535353;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+
+.sb-gen-rename-btn:hover {
+  color: #fff;
+}
+
+.sb-gen-rename-input {
+  background: #282828;
+  border: 1px solid #535353;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 8px;
+  width: 100%;
+  outline: none;
+}
+
+.sb-gen-rename-input:focus {
+  border-color: #1DB954;
 }
 
 /* Waveform visualization */
@@ -1568,6 +1665,65 @@ body.spotify-brainer-open {
 }
 
 /* Prompt preview */
+.sb-gen-insights {
+  background: #1a1a1a;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: #b3b3b3;
+  line-height: 1.5;
+}
+
+.sb-gen-insights-reason {
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.sb-gen-insights-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb-gen-insights-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: #282828;
+  color: #a7a7a7;
+}
+
+.sb-gen-insights-tag.rising {
+  background: rgba(29, 185, 84, 0.15);
+  color: #1DB954;
+}
+
+.sb-gen-insights-tag.declining {
+  background: rgba(232, 93, 117, 0.15);
+  color: #e85d75;
+}
+
+.sb-gen-insights-line {
+  width: 100%;
+  font-size: 11px;
+  color: #a7a7a7;
+  margin-top: 4px;
+}
+
+.sb-gen-insights-divider {
+  width: 100%;
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #333;
+}
+
 .sb-gen-prompt-preview {
   padding-top: 4px;
 }
@@ -1666,6 +1822,11 @@ body.spotify-brainer-open {
   margin-top: 4px;
 }
 
+.sb-gen-library-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 .sb-gen-library-header {
   font-size: 11px;
   font-weight: 700;
@@ -1682,6 +1843,7 @@ body.spotify-brainer-open {
   padding: 8px 10px;
   border-radius: 8px;
   transition: background 0.15s;
+  cursor: pointer;
 }
 
 .sb-gen-lib-item:hover {

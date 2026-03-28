@@ -3,7 +3,7 @@
 
 import { getAdapter } from '../llm/registry.js';
 import { LyriaAdapter } from '../music-gen/adapters/lyria.js';
-import { buildMusicAgentSystemPrompt, buildAntiTasteSystemPrompt, assembleLyriaPrompt, buildFallbackLyriaPrompt } from '../music-gen/prompt-builder.js';
+import { buildMusicAgentSystemPrompt, buildAntiTasteSystemPrompt, buildFutureTasteSystemPrompt, assembleLyriaPrompt, buildFallbackLyriaPrompt } from '../music-gen/prompt-builder.js';
 import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
@@ -365,6 +365,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         //    Last.fm tags are fetched lazily inside tool calls (get_history_taste, get_top_artists),
         //    not pre-fetched here, to avoid delaying the LLM start.
         let lyriaPrompt = null;
+        let modeReason = null;
         if (llmAdapter) {
           try {
             // Exclude playback control tools — music gen only needs data-fetching + Last.fm tags
@@ -382,10 +383,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             // Phase 2: Execute all tools, compact results, one final LLM call to produce the prompt
             // This is exactly 2 LLM calls max, no ballooning context.
 
-            const buildSystemPrompt = mode === 'anti-taste' ? buildAntiTasteSystemPrompt : buildMusicAgentSystemPrompt;
-            const defaultIntent = mode === 'anti-taste'
-              ? 'Analyze my taste profile and generate a track from my biggest blind spot. Include one familiar anchor element.'
-              : 'Generate a track that reflects my overall taste.';
+            const SYSTEM_PROMPTS = {
+              'anti-taste': buildAntiTasteSystemPrompt,
+              'future-taste': buildFutureTasteSystemPrompt,
+            };
+            const DEFAULT_INTENTS = {
+              'anti-taste': 'Analyze my taste profile and generate a track from my biggest blind spot. Include one familiar anchor element.',
+              'future-taste': 'Analyze my taste drift and generate a track that represents where my taste is heading in 3-6 months. Extrapolate from my emerging artists and rising genres.',
+            };
+            const buildSystemPrompt = SYSTEM_PROMPTS[mode] || buildMusicAgentSystemPrompt;
+            const defaultIntent = DEFAULT_INTENTS[mode] || 'Generate a track that reflects my overall taste.';
 
             const planMessages = [
               { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
@@ -395,7 +402,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             // Phase 1: Ask LLM what data it needs
             const planResponse = await llmAdapter.sendMessage({
               model: llmModel,
-              maxTokens: 600,
+              maxTokens: 800,
               temperature: 0.3,
               messages: planMessages,
               tools: MUSIC_TOOLS,
@@ -464,6 +471,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 collectedData.push(compactToolResult(tc.name, tc.input, result));
               }
 
+              // For anti-taste and future-taste, always inject taste drift data
+              // so the LLM has it even if it didn't call the tool in Phase 1
+              if (mode === 'future-taste' && intelligence?.tasteDrift) {
+                const hasDriftData = collectedData.some((d) => d.startsWith('get_taste_drift'));
+                if (!hasDriftData) {
+                  const driftResult = { success: true, data: intelligence.tasteDrift };
+                  collectedData.push(compactToolResult('get_taste_drift', {}, driftResult));
+                }
+              }
+
               // Phase 2: Single final call with compacted data — produce the prompt
               const finalMessages = [
                 { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
@@ -472,17 +489,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
               const finalResponse = await llmAdapter.sendMessage({
                 model: llmModel,
-                maxTokens: 600,
+                maxTokens: 1024,
                 temperature: 0.3,
                 messages: finalMessages,
               }, llmApiKey);
 
               const jsonMatch = finalResponse.content?.trim().match(/\{[\s\S]*\}/);
-              if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
+                lyriaPrompt = assembleLyriaPrompt(parsed);
+              }
             } else {
               // LLM produced the prompt directly (no tools needed)
               const jsonMatch = planResponse.content?.trim().match(/\{[\s\S]*\}/);
-              if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
+                lyriaPrompt = assembleLyriaPrompt(parsed);
+              }
             }
           } catch (e) {
             console.warn('[Spotify Brainer] Music agent failed, using fallback:', e.message);
@@ -532,7 +557,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.warn('[Spotify Brainer] Album art generation failed:', e.message);
         }
 
-        sendResponse({ ...result, prompt: lyriaPrompt, albumArt });
+        // Include mode-specific insights
+        const modeInsights = (mode === 'anti-taste' || mode === 'future-taste') ? {
+          modeReason,
+          tasteDrift: intelligence?.tasteDrift ? {
+            velocity: intelligence.tasteDrift.velocity,
+            emerging: intelligence.tasteDrift.emerging?.slice(0, 5).map((a) => a.name),
+            fading: intelligence.tasteDrift.fading?.slice(0, 5).map((a) => a.name),
+            risingGenres: intelligence.tasteDrift.genreDrift?.rising?.slice(0, 3).map((g) => `${g.genre} (+${g.delta}%)`),
+            decliningGenres: intelligence.tasteDrift.genreDrift?.declining?.slice(0, 3).map((g) => `${g.genre} (${g.delta}%)`),
+            popularityDrift: intelligence.tasteDrift.popularityDrift,
+            predictions: intelligence.tasteDrift.predictions,
+            // Historical drift from GDPR data
+            historical: intelligence.tasteDrift.historical ? {
+              risingArtists: intelligence.tasteDrift.historical.risingArtists?.slice(0, 5).map((a) => `${a.name} (${a.share12m}%→${a.share3m}%)`),
+              fadingArtists: intelligence.tasteDrift.historical.fadingArtists?.slice(0, 5).map((a) => `${a.name} (${a.share12m}%→${a.share3m}%)`),
+              newDiscoveries: intelligence.tasteDrift.historical.newDiscoveries?.slice(0, 5).map((a) => a.name),
+              concentration: intelligence.tasteDrift.historical.concentration,
+            } : null,
+          } : null,
+        } : {};
+
+        sendResponse({ ...result, prompt: lyriaPrompt, albumArt, ...modeInsights });
       } catch (e) {
         console.error('[Spotify Brainer] Music generation failed:', e.message);
         sendResponse({ error: e.message });
@@ -670,6 +716,30 @@ function compactToolResult(toolName, input, result) {
     }
     case 'get_taste_profile':
       return `get_taste_profile: ${JSON.stringify(d).slice(0, 500)}`;
+    case 'get_taste_drift': {
+      const parts = [];
+      parts.push('=== Spotify API Drift (short vs long term) ===');
+      if (d.velocity != null) parts.push(`Velocity: ${d.velocity}% (how fast taste is changing)`);
+      if (d.emerging?.length) parts.push(`Emerging artists: ${d.emerging.map((a) => a.name).join(', ')}`);
+      if (d.fading?.length) parts.push(`Fading artists: ${d.fading.map((a) => a.name).join(', ')}`);
+      if (d.stable?.length) parts.push(`Stable core: ${d.stable.map((a) => a.name).join(', ')}`);
+      if (d.genreDrift?.rising?.length) parts.push(`Rising genres: ${d.genreDrift.rising.map((g) => `${g.genre} (+${g.delta}%)`).join(', ')}`);
+      if (d.genreDrift?.declining?.length) parts.push(`Declining genres: ${d.genreDrift.declining.map((g) => `${g.genre} (${g.delta}%)`).join(', ')}`);
+      if (d.popularityDrift) parts.push(`Popularity: ${d.popularityDrift.long} → ${d.popularityDrift.short} (${d.popularityDrift.delta > 0 ? '+' : ''}${d.popularityDrift.delta})`);
+      // Historical drift from GDPR data
+      if (d.historical) {
+        const h = d.historical;
+        parts.push('\n=== Historical Drift (GDPR listening data) ===');
+        if (h.periodCoverage) parts.push(`Data: ${h.periodCoverage.total} plays (12m: ${h.periodCoverage.last12m}, 3m: ${h.periodCoverage.last3m}, 1m: ${h.periodCoverage.last1m})`);
+        if (h.risingArtists?.length) parts.push(`Rising artists (12m→3m): ${h.risingArtists.map((a) => `${a.name} (${a.share12m}%→${a.share3m}%${a.momentum > 0 ? ' ↗' : a.momentum < 0 ? ' ↘' : ''})`).join(', ')}`);
+        if (h.fadingArtists?.length) parts.push(`Fading artists (12m→3m): ${h.fadingArtists.map((a) => `${a.name} (${a.share12m}%→${a.share3m}%)`).join(', ')}`);
+        if (h.newDiscoveries?.length) parts.push(`New discoveries (last 3m): ${h.newDiscoveries.map((a) => `${a.name} (${a.plays} plays)`).join(', ')}`);
+        if (h.concentration) parts.push(`Artist concentration: top-10 share ${h.concentration.baseline}%→${h.concentration.recent}% (${h.concentration.delta > 0 ? '+' : ''}${h.concentration.delta}%)`);
+        if (h.volumeTrend?.length) parts.push(`Monthly volume: ${h.volumeTrend.map((m) => `${m.month}: ${m.plays}`).join(', ')}`);
+      }
+      if (d.predictions?.length) parts.push(`\nPredictions:\n${d.predictions.map((p) => `  - ${p}`).join('\n')}`);
+      return `get_taste_drift:\n${parts.join('\n')}`;
+    }
     default:
       // Generic fallback — truncate to keep it small
       const json = JSON.stringify(d);
@@ -751,6 +821,29 @@ async function executeTool(toolName, input) {
     get_taste_profile: () => {
       if (!intelligence) return { error: 'No taste profile computed. Ask the user to refresh their data.' };
       return { success: true, data: intelligence };
+    },
+    get_taste_drift: async () => {
+      // If taste drift is missing (stale cache or not yet computed), compute it now
+      if (!intelligence?.tasteDrift && spotifyData?.topArtists) {
+        let histEvents = [];
+        try {
+          const db = await openHistoryDB();
+          const tx = db.transaction('listeningEvents', 'readonly');
+          histEvents = await new Promise((resolve, reject) => {
+            const req = tx.objectStore('listeningEvents').getAll();
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
+        } catch (e) { /* ignore */ }
+        const intel = new SpotifyIntelligence();
+        const drift = intel.computeTasteDrift(spotifyData, histEvents);
+        if (drift) {
+          if (intelligence) intelligence.tasteDrift = drift;
+          return { success: true, data: drift };
+        }
+      }
+      if (!intelligence?.tasteDrift) return { error: 'No taste drift data. Load your Spotify data first.' };
+      return { success: true, data: intelligence.tasteDrift };
     },
     get_history_stats: async () => {
       if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported. Ask the user to import their Spotify GDPR data export.' };
@@ -1289,11 +1382,24 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 7: Compute intelligence
+    // Step 7: Compute intelligence (with history events for taste drift)
     stepIdx = 7;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
+    // Pre-fetch history events so taste drift can use them
+    let historyEvents = [];
+    try {
+      const db = await openHistoryDB();
+      const tx = db.transaction('listeningEvents', 'readonly');
+      historyEvents = await new Promise((resolve, reject) => {
+        const req = tx.objectStore('listeningEvents').getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) {
+      console.warn('[Spotify Brainer] Could not fetch history for taste drift:', e);
+    }
     const intel = new SpotifyIntelligence();
-    intelligence = intel.compute(spotifyData);
+    intelligence = intel.compute(spotifyData, historyEvents);
     const tags = intelligence.personalityTags?.slice(0, 3).join(', ') || 'computed';
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', tags);
 
