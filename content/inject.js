@@ -13,7 +13,7 @@
     settings: '<svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.69-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.25-1.13.56-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94 0 .31.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.69 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.25 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg>',
     chat: '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>',
     trash: '<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
-    data: '<svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>',
+    data: '<svg viewBox="0 0 24 24"><path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/></svg>',
     close: '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
     copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
@@ -38,8 +38,8 @@
         Spotify Brainer
       </div>
       <div class="sb-header-actions">
-        <button class="sb-header-btn" id="sb-btn-history" title="Conversations">${ICONS.chat}</button>
         <button class="sb-header-btn" id="sb-btn-new" title="New Chat">${ICONS.newChat}</button>
+        <button class="sb-header-btn" id="sb-btn-history" title="Chats">${ICONS.chat}</button>
         <button class="sb-header-btn" id="sb-btn-data" title="Data Viewer">${ICONS.data}</button>
         <button class="sb-header-btn" id="sb-btn-settings" title="Settings">${ICONS.settings}</button>
       </div>
@@ -122,11 +122,16 @@
       <div class="sb-settings-section">
         <div class="sb-settings-section-title">Data Import</div>
         <div class="sb-settings-group">
-          <label>GDPR Streaming History Import</label>
+          <label>Streaming History Import</label>
           <input type="file" id="sb-gdpr-import" accept=".zip,.json" multiple
-            style="color: #b3b3b3; font-size: 13px; margin-top: 6px;" />
+            style="display: none;" />
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
+            <button id="sb-gdpr-import-btn" style="background: #1db954; color: #000; border: none; border-radius: 20px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;">Import Files</button>
+            <button id="sb-gdpr-clear-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #b3b3b3; border-radius: 20px; padding: 8px 16px; font-size: 13px; cursor: pointer; display: none;">Clear History</button>
+          </div>
+          <div id="sb-gdpr-import-status" style="color: #b3b3b3; font-size: 13px; margin-top: 6px;"></div>
           <span class="sb-settings-hint">
-            Import your Extended Streaming History from Spotify Account &rarr; Privacy &rarr; Download your data
+            Import your Streaming History JSON files from Spotify Account &rarr; Privacy &rarr; Download your data
           </span>
         </div>
       </div>
@@ -140,6 +145,7 @@
         <button class="sb-data-tab" data-tab="top">Top Items</button>
         <button class="sb-data-tab" data-tab="recent">Recent</button>
         <button class="sb-data-tab" data-tab="history">History</button>
+        <button class="sb-data-tab" data-tab="godmode">God Mode</button>
       </div>
       <div class="sb-data-content" id="sb-data-content">
         <div class="sb-data-empty">No data loaded yet. Click Refresh to load.</div>
@@ -248,6 +254,9 @@
     tokenCounter.style.display = name === 'chat' ? 'block' : 'none';
     settingsEl.classList.toggle('open', name === 'settings');
     dataViewerEl.classList.toggle('open', name === 'data');
+    // Close chats dropdown when switching panels
+    showingConvList = false;
+    convListEl.classList.remove('open');
     if (name === 'data') renderDataViewer('profile');
 
     // Update active tab highlight
@@ -295,6 +304,7 @@
       case 'top': return renderTopTab(data);
       case 'recent': return renderRecentTab(data);
       case 'history': return renderHistoryTab(data);
+      case 'godmode': return renderGodModeTab(data);
       default: return '<div class="sb-data-empty">Unknown tab</div>';
     }
   }
@@ -463,6 +473,61 @@
       }
       html += '</div>';
     }
+
+    return html;
+  }
+
+  function renderGodModeTab(d) {
+    const sections = [
+      { label: 'Now Playing', data: d.nowPlaying, source: 'api + dom' },
+      { label: 'User Profile', data: d.userProfile, source: 'api' },
+      { label: 'Top Artists (Short Term)', data: d.topArtists?.short, source: 'api' },
+      { label: 'Top Artists (Medium Term)', data: d.topArtists?.medium, source: 'api' },
+      { label: 'Top Artists (Long Term)', data: d.topArtists?.long, source: 'api' },
+      { label: 'Top Tracks (Short Term)', data: d.topTracks?.short, source: 'api' },
+      { label: 'Top Tracks (Medium Term)', data: d.topTracks?.medium, source: 'api' },
+      { label: 'Top Tracks (Long Term)', data: d.topTracks?.long, source: 'api' },
+      { label: 'Recently Played', data: d.recentlyPlayed, source: 'api' },
+      { label: 'Playlists', data: d.playlists, source: 'api' },
+      { label: 'Saved Tracks', data: d.savedTracks, source: 'api' },
+      { label: 'Saved Albums', data: d.savedAlbums, source: 'api' },
+      { label: 'Queue', data: d.queue, source: 'api' },
+      { label: 'Audio Features', data: d.audioFeatures, source: 'api' },
+      { label: 'Intelligence', data: d.intelligence, source: 'computed' },
+      { label: 'History Metrics', data: d.historyMetrics, source: 'computed' },
+    ];
+
+    let html = '';
+    for (const s of sections) {
+      const count = Array.isArray(s.data) ? ` (${s.data.length})` : (s.data ? '' : ' — empty');
+      const json = s.data ? escapeHtml(JSON.stringify(s.data, null, 2)) : '';
+      html += '<div class="sb-data-section">';
+      const badge = s.source === 'computed'
+        ? ' <span style="font-size:10px;font-weight:400;padding:2px 6px;display:inline-block;border-radius:8px;background:#1db954;color:#000;vertical-align:middle;margin-left:6px;">computed</span>'
+        : s.source === 'api + dom'
+        ? ' <span style="font-size:10px;font-weight:400;padding:2px 6px;display:inline-block;border-radius:8px;background:#333;color:#b3b3b3;vertical-align:middle;margin-left:6px;">api + dom</span>'
+        : ' <span style="font-size:10px;font-weight:400;padding:2px 6px;display:inline-block;border-radius:8px;background:#333;color:#b3b3b3;vertical-align:middle;margin-left:6px;">api</span>';
+      html += `<h3 class="sb-data-heading sb-godmode-toggle" style="cursor:pointer;user-select:none;padding-bottom:8px;display:flex;align-items:center;">${escapeHtml(s.label)}${count}${badge} <span class="sb-godmode-arrow" style="margin-left:auto;font-size:11px;color:#888;">&#9660;</span></h3>`;
+      html += `<pre class="sb-godmode-json" style="display:none;max-height:400px;overflow:auto;background:#181818;padding:10px;border-radius:6px;font-size:11px;color:#b3b3b3;white-space:pre-wrap;word-break:break-all;">${json || '<span style="color:#666;">No data</span>'}</pre>`;
+      html += '</div>';
+    }
+
+    // Wire up toggles after render
+    setTimeout(() => {
+      document.querySelectorAll('.sb-godmode-toggle').forEach((el) => {
+        el.addEventListener('click', () => {
+          const pre = el.nextElementSibling;
+          const arrow = el.querySelector('.sb-godmode-arrow');
+          if (pre.style.display === 'none') {
+            pre.style.display = 'block';
+            arrow.innerHTML = '&#9650;';
+          } else {
+            pre.style.display = 'none';
+            arrow.innerHTML = '&#9660;';
+          }
+        });
+      });
+    }, 0);
 
     return html;
   }
@@ -780,7 +845,7 @@
   document.getElementById('sb-btn-history').addEventListener('click', () => {
     showingConvList = !showingConvList;
     convListEl.classList.toggle('open', showingConvList);
-    document.getElementById('sb-btn-history').classList.toggle('active', showingConvList);
+    // No highlight for conversations button
     if (showingConvList) renderConvList();
   });
 
@@ -846,6 +911,7 @@
         renderMessages();
         showingConvList = false;
         convListEl.classList.remove('open');
+        if (activePanel !== 'chat') showPanel('chat');
       });
     });
 
@@ -1335,9 +1401,11 @@
       progressBarFill.style.width = pct + '%';
       progressBarTrack.style.display = 'block';
 
-      // Update summary line
-      contextDot.classList.add('loading');
-      contextText.textContent = msg.stepLabel + (msg.detail ? ` — ${msg.detail}` : '');
+      // Only update context bar text/spinner during active loading
+      if (msg.status === 'loading') {
+        contextDot.classList.add('loading');
+        contextText.textContent = msg.stepLabel + (msg.detail ? ` — ${msg.detail}` : '');
+      }
 
       // Auto-expand on first load
       if (!loadStepsExpanded && msg.step === 0 && msg.status === 'loading') {
@@ -1348,6 +1416,11 @@
 
       renderLoadSteps();
       saveProgressState();
+
+      // If all steps are done (e.g. post-import update), clear loading state
+      if (doneCount === msg.totalSteps) {
+        contextDot.classList.remove('loading');
+      }
     }
 
     if (msg.type === 'spotify-load-complete') {
@@ -1377,27 +1450,94 @@
   });
 
   // --- GDPR import ---
-  document.getElementById('sb-gdpr-import').addEventListener('change', async (e) => {
+  const gdprInput = document.getElementById('sb-gdpr-import');
+  const gdprBtn = document.getElementById('sb-gdpr-import-btn');
+  const gdprClearBtn = document.getElementById('sb-gdpr-clear-btn');
+  const gdprStatus = document.getElementById('sb-gdpr-import-status');
+
+  function updateGdprUI(files) {
+    if (files?.length) {
+      gdprStatus.textContent = files.join(', ');
+      gdprClearBtn.style.display = '';
+    } else {
+      gdprStatus.textContent = '';
+      gdprClearBtn.style.display = 'none';
+    }
+  }
+
+  // Show existing import status on load
+  chrome.runtime.sendMessage({ type: 'get-spotify-data' }, (resp) => {
+    updateGdprUI(resp?.historyMetrics?.importedFiles);
+  });
+
+  gdprBtn.addEventListener('click', () => gdprInput.click());
+
+  // Clear history button
+  gdprClearBtn.addEventListener('click', async () => {
+    gdprClearBtn.disabled = true;
+    gdprStatus.textContent = 'Clearing...';
+    await chrome.runtime.sendMessage({ type: 'clear-history' });
+    updateGdprUI(null);
+    gdprClearBtn.disabled = false;
+    const activeTab = document.querySelector('.sb-data-tab.active');
+    if (activeTab) renderDataViewer(activeTab.dataset.tab);
+  });
+
+  gdprInput.addEventListener('change', async (e) => {
     const files = e.target.files;
     if (!files.length) return;
+
+    // Clear existing history before importing new files
+    gdprStatus.textContent = 'Clearing previous history...';
+    await chrome.runtime.sendMessage({ type: 'clear-history' });
+
     contextDot.classList.add('loading');
+    gdprBtn.disabled = true;
+    gdprStatus.textContent = 'Importing...';
     contextText.textContent = 'Importing streaming history...';
 
+    let totalImported = 0;
+    let totalFiles = 0;
     for (const file of files) {
       if (file.name.endsWith('.json')) {
         const text = await file.text();
         try {
           const data = JSON.parse(text);
-          chrome.runtime.sendMessage({ type: 'gdpr-import', data, filename: file.name });
+          if (!Array.isArray(data)) {
+            console.warn(`[Spotify Brainer] Skipping ${file.name}: not an array of streaming events`);
+            continue;
+          }
+          totalFiles++;
+          contextText.textContent = `Importing ${file.name}...`;
+          gdprStatus.textContent = `Importing ${file.name}...`;
+          const resp = await chrome.runtime.sendMessage({ type: 'gdpr-import', data, filename: file.name });
+          if (resp && resp.imported != null) totalImported += resp.imported;
         } catch (err) {
           console.error('[Spotify Brainer] Failed to parse GDPR JSON:', err);
         }
       } else if (file.name.endsWith('.zip')) {
-        // We'll handle ZIP extraction in the background worker
+        totalFiles++;
         const buffer = await file.arrayBuffer();
         chrome.runtime.sendMessage({ type: 'gdpr-import-zip', buffer: Array.from(new Uint8Array(buffer)) });
       }
     }
+
+    contextDot.classList.remove('loading');
+    gdprBtn.disabled = false;
+    if (totalImported > 0) {
+      contextText.textContent = `Imported ${totalImported.toLocaleString()} events from ${totalFiles} file${totalFiles > 1 ? 's' : ''}`;
+      const fileNames = Array.from(files).filter(f => f.name.endsWith('.json')).map(f => f.name);
+      updateGdprUI(fileNames);
+      const activeTab = document.querySelector('.sb-data-tab.active');
+      if (activeTab) renderDataViewer(activeTab.dataset.tab);
+    } else if (totalFiles > 0) {
+      contextText.textContent = 'No streaming events found — check file format';
+      updateGdprUI(null);
+    } else {
+      contextText.textContent = 'No compatible files selected';
+      updateGdprUI(null);
+    }
+    e.target.value = '';
   });
 
   // --- Init ---

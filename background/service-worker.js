@@ -409,8 +409,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'gdpr-import') {
-    handleGDPRImport(msg.data, msg.filename);
-    return;
+    handleGDPRImport(msg.data, msg.filename).then((imported) => {
+      // Update the history progress step on all Spotify tabs
+      if (historyMetrics?.lifetimeStats?.totalPlays) {
+        chrome.tabs.query({ url: 'https://open.spotify.com/*' }, (tabs) => {
+          for (const tab of tabs) {
+            sendProgress(tab.id, 8, DATA_LOAD_STEPS[8].label, 'done',
+              `${historyMetrics.lifetimeStats.totalPlays.toLocaleString()} plays over ${historyMetrics.lifetimeStats.totalYears} years`);
+          }
+        });
+      }
+      sendResponse({ imported });
+    });
+    return true; // async
+  }
+
+  if (msg.type === 'clear-history') {
+    (async () => {
+      const db = await openHistoryDB();
+      const tx = db.transaction('listeningEvents', 'readwrite');
+      tx.objectStore('listeningEvents').clear();
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      historyMetrics = null;
+      await saveToCache();
+      sendResponse({ ok: true });
+    })();
+    return true; // async
   }
 
   // intelligence and historyMetrics are computed directly in this worker
@@ -974,14 +1001,17 @@ async function fetchAllPagesWithProgress(url, headers, maxPages = 20, onProgress
 async function handleGDPRImport(data, filename) {
   // Store in IndexedDB
   const db = await openHistoryDB();
-  const tx = db.transaction('listeningEvents', 'readwrite');
-  const store = tx.objectStore('listeningEvents');
 
-  let imported = 0;
+  // Detect format: extended GDPR (has `ts`) vs basic Account Data (has `endTime`)
+  const events = [];
   for (const entry of data) {
-    if (!entry.ts || !entry.master_metadata_track_name) continue;
+    const isExtended = !!entry.ts;
+    const isBasic = !!entry.endTime;
+    if (!isExtended && !isBasic) continue;
+    if (isExtended && !entry.master_metadata_track_name) continue;
+    if (isBasic && !entry.trackName) continue;
 
-    const event = {
+    events.push(isExtended ? {
       timestamp: new Date(entry.ts).getTime(),
       trackUri: entry.spotify_track_uri || '',
       trackName: entry.master_metadata_track_name || '',
@@ -995,20 +1025,49 @@ async function handleGDPRImport(data, filename) {
       platform: entry.platform || '',
       offline: entry.offline || false,
       incognitoMode: entry.incognito_mode || false,
-    };
-
-    try {
-      await store.put(event);
-      imported++;
-    } catch {}
+    } : {
+      timestamp: new Date(entry.endTime).getTime(),
+      trackUri: '',
+      trackName: entry.trackName || '',
+      artistName: entry.artistName || '',
+      albumName: '',
+      msPlayed: entry.msPlayed || 0,
+      skipped: false,
+      reasonStart: '',
+      reasonEnd: '',
+      shuffle: false,
+      platform: '',
+      offline: false,
+      incognitoMode: false,
+    });
   }
 
-  await tx.done;
+  // Write all events in a single transaction, waiting for it to complete
+  const imported = await new Promise((resolve, reject) => {
+    const tx = db.transaction('listeningEvents', 'readwrite');
+    const store = tx.objectStore('listeningEvents');
+    let count = 0;
+    for (const event of events) {
+      const req = store.put(event);
+      req.onsuccess = () => count++;
+    }
+    tx.oncomplete = () => resolve(count);
+    tx.onerror = () => reject(tx.error);
+  });
+
   console.log(`[Spotify Brainer] GDPR import complete: ${imported} events from ${filename}`);
+
+  // Track imported filenames
+  if (!historyMetrics) historyMetrics = {};
+  if (!historyMetrics.importedFiles) historyMetrics.importedFiles = [];
+  if (!historyMetrics.importedFiles.includes(filename)) {
+    historyMetrics.importedFiles.push(filename);
+  }
 
   // Trigger metrics recomputation and cache
   await computeHistoryMetrics();
   await saveToCache();
+  return imported;
 }
 
 // --- IndexedDB for history ---
@@ -1051,7 +1110,7 @@ async function computeHistoryMetrics() {
 
     // Lifetime stats
     const totalMs = allEvents.reduce((sum, e) => sum + (e.msPlayed || 0), 0);
-    const uniqueTracks = new Set(allEvents.map((e) => e.trackUri).filter(Boolean));
+    const uniqueTracks = new Set(allEvents.map((e) => e.trackUri || (e.trackName && e.artistName ? `${e.trackName}|||${e.artistName}` : '')).filter(Boolean));
     const uniqueArtists = new Set(allEvents.map((e) => e.artistName).filter(Boolean));
     const firstEvent = allEvents[0];
     const lastEvent = allEvents[allEvents.length - 1];
@@ -1169,6 +1228,8 @@ async function computeHistoryMetrics() {
     const overallSkipRate = allEvents.filter((e) => e.skipped).length / allEvents.length;
     metrics.behavioralPatterns.push(`Overall skip rate: ${Math.round(overallSkipRate * 100)}%`);
 
+    // Preserve importedFiles list across recomputation
+    metrics.importedFiles = historyMetrics?.importedFiles || [];
     historyMetrics = metrics;
 
     // Notify any connected tabs

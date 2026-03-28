@@ -13,7 +13,8 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Track credits lookup** — scrapes Spotify's credits dialog for any track (writers, producers, performers, engineers, label) via SPA navigation — no API needed
 - **Clickable song links** — every song the LLM mentions is a playable link
 - **Taste intelligence layer** — decade split, discovery score, personality tags, playlist profiles
-- **GDPR history import** — import your complete Spotify listening history for deep trend analysis
+- **Streaming history import** — import your Spotify listening history (both basic Account Data and Extended GDPR formats) with clear/re-import support
+- **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Smart context compaction** — tiered system that preserves the most relevant data as conversations grow
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
@@ -59,7 +60,11 @@ Click the **Refresh** button to fetch your Spotify data. The progress indicator 
 - Taste profile computation
 - Historical metrics (if GDPR data imported)
 
-For deeper history analysis, import your GDPR Extended Streaming History (request it from Spotify Account > Privacy > Download your data — takes ~30 days).
+For history analysis, import your streaming history JSON files from your Spotify GDPR data export (Account > Privacy > Download your data). Two formats are supported:
+- **Standard streaming history** — `StreamingHistory_music_*.json` files with `endTime`, `trackName`, `artistName`, `msPlayed`
+- **Extended streaming history** — files with full metadata including track URIs, skip/shuffle data, platform info (must be specifically requested, takes ~30 days)
+
+Re-importing clears previous history. Use the **Clear History** button to wipe data manually.
 
 ## Architecture
 
