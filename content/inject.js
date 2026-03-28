@@ -1562,6 +1562,30 @@
     if (msg.role === 'user') {
       div.textContent = msg.content;
     } else {
+      // Render persisted tool call pills above the message content
+      if (msg.toolCalls?.length) {
+        const toolDiv = document.createElement('div');
+        toolDiv.className = 'sb-tool-status';
+        for (const tc of msg.toolCalls) {
+          const pill = document.createElement('div');
+          if (tc.status === 'done') {
+            pill.className = 'sb-tool-pill sb-tool-done';
+            pill.textContent = `✓ ${formatToolName(tc.name)}`;
+          } else if (tc.status === 'error') {
+            pill.className = 'sb-tool-pill sb-tool-error';
+            pill.textContent = `✗ ${formatToolName(tc.name)}${tc.error ? ': ' + tc.error : ''}`;
+          } else if (tc.status === 'cancelled') {
+            pill.className = 'sb-tool-pill sb-tool-error';
+            pill.textContent = `⊘ ${formatToolName(tc.name)} (cancelled)`;
+          } else {
+            pill.className = 'sb-tool-pill sb-tool-done';
+            pill.textContent = `✓ ${formatToolName(tc.name)}`;
+          }
+          toolDiv.appendChild(pill);
+        }
+        div.appendChild(toolDiv);
+      }
+
       const contentDiv = document.createElement('div');
       contentDiv.className = 'sb-msg-content';
       contentDiv.innerHTML = renderMarkdown(msg.content);
@@ -1792,7 +1816,7 @@
     scrollToBottom();
 
     // Prepare assistant message
-    const assistantMsg = { role: 'assistant', content: '', timestamp: Date.now() };
+    const assistantMsg = { role: 'assistant', content: '', timestamp: Date.now(), toolCalls: [] };
     conv.messages.push(assistantMsg);
 
     try {
@@ -1814,14 +1838,16 @@
       let contentEl = null;
 
       let toolStatusEl = null; // Container for tool execution status pills
+      let toolRoundId = 0; // Unique ID per tool round to scope pill queries
 
       port.onMessage.addListener((chunk) => {
         if (chunk.type === 'text') {
           // Remove typing indicator on first token
           const typing = document.getElementById('sb-typing');
           if (typing) typing.remove();
-          // Remove tool status on text (the LLM is now responding with results)
-          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
+          // Detach tool status ref so new tool rounds get a fresh container,
+          // but keep the element in the DOM so completed pills remain visible.
+          toolStatusEl = null;
 
           assistantMsg.content += chunk.content;
 
@@ -1839,36 +1865,58 @@
           if (typing) typing.remove();
 
           if (!toolStatusEl) {
+            toolRoundId++;
             toolStatusEl = document.createElement('div');
             toolStatusEl.className = 'sb-tool-status';
+            toolStatusEl.dataset.round = toolRoundId;
             messagesEl.appendChild(toolStatusEl);
           }
           const pill = document.createElement('div');
           pill.className = 'sb-tool-pill sb-tool-pending';
           pill.dataset.tool = chunk.toolName;
+          pill.dataset.round = toolRoundId;
           pill.textContent = `⏳ ${formatToolName(chunk.toolName)}...`;
           toolStatusEl.appendChild(pill);
+
+          // Persist to message data
+          assistantMsg.toolCalls.push({ name: chunk.toolName, status: 'pending' });
+
           scrollToBottom();
         } else if (chunk.type === 'tool_status') {
-          // Update the pill for this tool
-          if (toolStatusEl) {
-            const pill = toolStatusEl.querySelector(`[data-tool="${chunk.toolName}"]`);
-            if (pill) {
-              if (chunk.status === 'executing') {
-                pill.textContent = `⚡ ${formatToolName(chunk.toolName)}...`;
-                pill.className = 'sb-tool-pill sb-tool-executing';
-              } else if (chunk.status === 'done') {
-                pill.textContent = `✓ ${formatToolName(chunk.toolName)}`;
-                pill.className = 'sb-tool-pill sb-tool-done';
-              } else if (chunk.status === 'error') {
-                pill.textContent = `✗ ${formatToolName(chunk.toolName)}: ${chunk.result}`;
-                pill.className = 'sb-tool-pill sb-tool-error';
-              }
+          // Update the pill for this tool — scoped to the current round so we don't
+          // accidentally update pills from previous messages with the same tool name.
+          const pill = messagesEl.querySelector(`.sb-tool-pill[data-round="${toolRoundId}"][data-tool="${chunk.toolName}"]`);
+          if (pill) {
+            if (chunk.status === 'executing') {
+              pill.textContent = `⚡ ${formatToolName(chunk.toolName)}...`;
+              pill.className = 'sb-tool-pill sb-tool-executing';
+            } else if (chunk.status === 'done') {
+              pill.textContent = `✓ ${formatToolName(chunk.toolName)}`;
+              pill.className = 'sb-tool-pill sb-tool-done';
+            } else if (chunk.status === 'error') {
+              pill.textContent = `✗ ${formatToolName(chunk.toolName)}: ${chunk.result}`;
+              pill.className = 'sb-tool-pill sb-tool-error';
             }
+          }
+
+          // Persist status to message data
+          const tc = [...assistantMsg.toolCalls].reverse().find(t => t.name === chunk.toolName && t.status !== 'done' && t.status !== 'error');
+          if (tc) {
+            tc.status = chunk.status === 'done' ? 'done' : chunk.status === 'error' ? 'error' : tc.status;
+            if (chunk.status === 'error') tc.error = chunk.result;
           }
           scrollToBottom();
         } else if (chunk.type === 'done') {
-          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
+          // Mark any leftover pending/executing pills as cancelled
+          messagesEl.querySelectorAll('.sb-tool-pending, .sb-tool-executing').forEach((pill) => {
+            pill.textContent = `⊘ ${formatToolName(pill.dataset.tool)} (cancelled)`;
+            pill.className = 'sb-tool-pill sb-tool-error';
+          });
+          // Persist cancelled state
+          for (const tc of assistantMsg.toolCalls) {
+            if (tc.status === 'pending' || tc.status === 'executing') tc.status = 'cancelled';
+          }
+          toolStatusEl = null;
           finishGeneration();
           if (chunk.usage) {
             tokenCounter.textContent = `${chunk.usage.inputTokens} in / ${chunk.usage.outputTokens} out`;
@@ -1876,7 +1924,16 @@
         } else if (chunk.type === 'error') {
           const typing = document.getElementById('sb-typing');
           if (typing) typing.remove();
-          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
+          // Mark any leftover pending/executing pills as cancelled
+          messagesEl.querySelectorAll('.sb-tool-pending, .sb-tool-executing').forEach((pill) => {
+            pill.textContent = `⊘ ${formatToolName(pill.dataset.tool)} (cancelled)`;
+            pill.className = 'sb-tool-pill sb-tool-error';
+          });
+          // Persist cancelled state
+          for (const tc of assistantMsg.toolCalls) {
+            if (tc.status === 'pending' || tc.status === 'executing') tc.status = 'cancelled';
+          }
+          toolStatusEl = null;
           showError(chunk.content, 'LLM Response');
           conv.messages.pop();
           finishGeneration();

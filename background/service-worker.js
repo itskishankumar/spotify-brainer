@@ -131,6 +131,14 @@ function buildSystemPrompt() {
     `You also have data-fetching tools to look up the user's profile, top artists/tracks, listening history, playlists, and taste profile — fetch what you need when it's relevant.`,
     `When the user asks to play something, search for it first to get the URI, then play it. Don't ask for confirmation — just do it.`,
     ``,
+    `## Playback tool rules`,
+    `- Playback commands (play_track, pause, seek, skip_next, etc.) are FIRE AND FORGET. If the tool returns success, trust it — do NOT call it again to "make sure" or retry.`,
+    `- NEVER call play_track more than once for the same request. Once a track is playing, it's playing.`,
+    `- When the user asks to jump to a timestamp:`,
+    `  1. Check "Now Playing" above. If the requested song is ALREADY playing, just call seek — no search or play_track needed.`,
+    `  2. If a DIFFERENT song (or nothing) is playing, call search to get the URI, then call play_track with BOTH the URI and position_ms. This starts playback at the exact timestamp in a single call — no separate seek needed.`,
+    `- Only use seek to jump within the CURRENTLY PLAYING track. Never use seek to start a new song at a timestamp — use play_track with position_ms instead.`,
+    ``,
     `## Communication style`,
     `Be conversational, warm, and expressive — like a music-obsessed friend who's genuinely excited to help.`,
     `Give thorough, detailed responses. Don't be terse or bullet-point-only. Elaborate on your reasoning, share musical insights, and explain connections between artists/genres.`,
@@ -1358,6 +1366,16 @@ async function executeTool(toolName, input) {
     if (mapping.action === 'createPlaylist' && !params.userId && spotifyData.userProfile?.id) {
       params.userId = spotifyData.userProfile.id;
     }
+
+    // Special case: play_track on an already-playing track with position_ms → just seek
+    if (mapping.action === 'play' && params.positionMs !== undefined && params.uri) {
+      const trackId = params.uri.replace('spotify:track:', '');
+      if (spotifyData.nowPlaying?.trackId === trackId) {
+        await CONTROLS.seek(token, { positionMs: params.positionMs });
+        return { success: true, data: `Track already playing — seeked to ${params.positionMs}ms.` };
+      }
+    }
+
     const result = await fn(token, params);
     // Playback commands return null (HTTP 204) — give the LLM a clear confirmation
     // so it doesn't misinterpret null as a failure
@@ -1419,7 +1437,8 @@ chrome.runtime.onConnect.addListener((port) => {
               textContent += chunk.content;
               safeSend(chunk);
             } else if (chunk.type === 'tool_use_start') {
-              safeSend({ type: 'tool_use_start', toolName: chunk.toolName });
+              // Don't send to UI yet — wait until tool actually executes
+              // to avoid showing pills for tools that never run
             } else if (chunk.type === 'tool_use') {
               pendingToolCalls.push({ id: chunk.toolId, name: chunk.toolName, input: chunk.input });
             } else if (chunk.type === 'done') {
@@ -1454,13 +1473,35 @@ chrome.runtime.onConnect.addListener((port) => {
         }
         messages.push({ role: 'assistant', content: assistantContent });
 
+        // If play_track and seek are in the same round, reorder so play comes first
+        const hasPlay = pendingToolCalls.some(tc => tc.name === 'play_track');
+        const hasSeek = pendingToolCalls.some(tc => tc.name === 'seek');
+        if (hasPlay && hasSeek) {
+          pendingToolCalls.sort((a, b) => {
+            // search first, then play_track, then seek, everything else keeps order
+            const order = { search: 0, play_track: 1, seek: 3 };
+            return (order[a.name] ?? 2) - (order[b.name] ?? 2);
+          });
+        }
+
         // Execute all tool calls and collect results
         const toolResults = [];
+        let justPlayed = false; // track if play_track was called this round
         for (const tc of pendingToolCalls) {
           console.log(`[Spotify Brainer] Executing tool: ${tc.name}`);
+          safeSend({ type: 'tool_use_start', toolName: tc.name });
           safeSend({ type: 'tool_status', toolName: tc.name, status: 'executing' });
 
+          // If play was called this round and we're now seeking, wait for the
+          // new track to actually start before seeking — otherwise the seek lands
+          // on the previous track.
+          if (justPlayed && tc.name === 'seek') {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+
           const result = await executeTool(tc.name, tc.input);
+
+          if (tc.name === 'play_track') justPlayed = true;
 
           // Compact search results to save tokens
           let resultContent = result;

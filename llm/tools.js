@@ -4,19 +4,24 @@
 export const SPOTIFY_TOOLS = [
   {
     name: 'play_track',
-    description: 'Play a specific track, album, or playlist on Spotify. Can play by URI or search query. If the user asks to play something, search for it first if you don\'t have the URI.',
+    description: 'Play a track, album, or playlist on Spotify by its URI. IMPORTANT: This tool ONLY accepts Spotify URIs (spotify:track:..., spotify:album:..., spotify:playlist:...). It does NOT accept song names or search queries. You MUST call the search tool first to get the URI — NEVER guess, hallucinate, or reuse a URI from the Now Playing context or previous turns. The only valid URIs are those returned by the search tool in the current turn. To start playback at a specific timestamp, pass position_ms — no separate seek call needed.',
     input_schema: {
       type: 'object',
       properties: {
         uri: {
           type: 'string',
-          description: 'Spotify URI (e.g. spotify:track:4iV5W9uYEdYUVa79Axb7Rh). If you don\'t have this, use the search tool first.',
+          description: 'Spotify URI — must be in the format spotify:track:ID, spotify:album:ID, or spotify:playlist:ID. Never pass a song name or search query here.',
         },
         context_uri: {
           type: 'string',
           description: 'Spotify context URI for playing within a playlist/album (e.g. spotify:playlist:37i9dQZF1DXcBWIGoYBM5M)',
         },
+        position_ms: {
+          type: 'integer',
+          description: 'Start playback at this position in milliseconds. Use this when the user wants to play a song at a specific time (e.g. "play X at 3:35" → position_ms: 215000). No separate seek call needed.',
+        },
       },
+      required: ['uri'],
     },
   },
   {
@@ -45,7 +50,7 @@ export const SPOTIFY_TOOLS = [
   },
   {
     name: 'seek',
-    description: 'Seek to a specific position in the current track.',
+    description: 'Seek to a specific position in the current track. IMPORTANT: NEVER call seek in the same tool call round as play_track or search. If the user wants to play a song at a specific time, first call search + play_track, then in your response tell the user the song is playing. Only call seek in a SEPARATE follow-up round after play_track has fully completed. This is because Spotify needs time to load the new track before seeking.',
     input_schema: {
       type: 'object',
       properties: {
@@ -414,7 +419,7 @@ export const SPOTIFY_TOOLS = [
 
 // Maps tool names to spotify-control action names and param transforms
 export const TOOL_TO_ACTION = {
-  play_track: { action: 'play', transform: (input) => ({ uri: input.uri, contextUri: input.context_uri }) },
+  play_track: { action: 'play', transform: (input) => ({ uri: input.uri, contextUri: input.context_uri, positionMs: input.position_ms }) },
   pause: { action: 'pause', transform: () => ({}) },
   skip_next: { action: 'next', transform: () => ({}) },
   skip_previous: { action: 'previous', transform: () => ({}) },
