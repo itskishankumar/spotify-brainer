@@ -8,9 +8,23 @@ import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
 import { getAccessToken, isLoggedIn, startLogin, logout, getClientId, setClientId } from '../lib/spotify-auth.js';
+import { ImagenAdapter } from '../image-gen/adapters/imagen.js';
+import { VeoAdapter } from '../video-gen/adapters/veo.js';
 import { initLastFmCache, enrichArtistsWithTags, enrichTracksWithTags, aggregateTopTags, getLastFmApiKey } from '../lib/lastfm.js';
 
 const MUSIC_GEN_ADAPTERS = { lyria: new LyriaAdapter() };
+const IMAGE_GEN_ADAPTERS = { imagen: new ImagenAdapter() };
+const VIDEO_GEN_ADAPTERS = { veo: new VeoAdapter() };
+function getImageGenAdapter(name) {
+  const adapter = IMAGE_GEN_ADAPTERS[name];
+  if (!adapter) throw new Error(`Unknown image gen provider: ${name}`);
+  return adapter;
+}
+function getVideoGenAdapter(name) {
+  const adapter = VIDEO_GEN_ADAPTERS[name];
+  if (!adapter) throw new Error(`Unknown video gen provider: ${name}`);
+  return adapter;
+}
 function getMusicGenAdapter(name) {
   const adapter = MUSIC_GEN_ADAPTERS[name];
   if (!adapter) throw new Error(`Unknown music gen provider: ${name}`);
@@ -490,7 +504,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         const musicAdapter = getMusicGenAdapter(provider);
         const result = await musicAdapter.generate({ prompt: lyriaPrompt, model }, apiKey);
-        sendResponse({ ...result, prompt: lyriaPrompt });
+
+        // Generate album art if image gen is configured
+        let albumArt = null;
+        try {
+          const imgProviderData = await chrome.storage.local.get('sb_image_provider');
+          const imgProvider = imgProviderData.sb_image_provider;
+          if (imgProvider) {
+            const imgKeyData = await chrome.storage.local.get(`sb_image_key_${imgProvider}`);
+            const imgModelData = await chrome.storage.local.get(`sb_image_model_${imgProvider}`);
+            const imgKey = imgKeyData[`sb_image_key_${imgProvider}`];
+            const imgModel = imgModelData[`sb_image_model_${imgProvider}`];
+            if (imgKey) {
+              const imgAdapter = getImageGenAdapter(imgProvider);
+              const artPrompt = `Album cover art for a music track: ${lyriaPrompt}. Style: abstract, modern, visually striking, no text, no words, no letters.`;
+              const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
+              albumArt = { image: imgResult.image, mimeType: imgResult.mimeType };
+              console.log('[Spotify Brainer] Album art generated');
+            }
+          }
+        } catch (e) {
+          console.warn('[Spotify Brainer] Album art generation failed:', e.message);
+        }
+
+        sendResponse({ ...result, prompt: lyriaPrompt, albumArt });
       } catch (e) {
         console.error('[Spotify Brainer] Music generation failed:', e.message);
         sendResponse({ error: e.message });
@@ -507,6 +544,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse(result);
       } catch (e) {
         sendResponse({ valid: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'image-test') {
+    (async () => {
+      try {
+        const adapter = getImageGenAdapter(msg.provider);
+        const result = await adapter.validate(msg.apiKey);
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ valid: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'video-test') {
+    (async () => {
+      try {
+        const adapter = getVideoGenAdapter(msg.provider);
+        const result = await adapter.validate(msg.apiKey);
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ valid: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'video-generate') {
+    (async () => {
+      try {
+        const adapter = getVideoGenAdapter(msg.provider);
+        const result = await adapter.generate({
+          prompt: msg.prompt,
+          model: msg.model,
+          durationSeconds: msg.durationSeconds || 8,
+          aspectRatio: msg.aspectRatio || '16:9',
+          image: msg.image || null,
+        }, msg.apiKey);
+        sendResponse(result);
+      } catch (e) {
+        console.error('[Spotify Brainer] Video generation failed:', e.message);
+        sendResponse({ error: e.message });
       }
     })();
     return true;

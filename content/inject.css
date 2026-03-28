@@ -1351,6 +1351,57 @@ body.spotify-brainer-open {
   margin-top: 8px;
 }
 
+.sb-gen-album-art {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.sb-gen-video-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-gen-video-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #282828;
+  border: 1px solid #535353;
+  color: #b3b3b3;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.sb-gen-video-btn:hover:not(:disabled) {
+  background: #333;
+  color: #fff;
+}
+
+.sb-gen-video-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sb-gen-video-status {
+  font-size: 11px;
+  color: #a7a7a7;
+}
+
+.sb-gen-video {
+  width: 100%;
+  border-radius: 8px;
+  max-height: 240px;
+  background: #000;
+}
+
 .sb-gen-track-name {
   font-size: 14px;
   font-weight: 600;
@@ -1597,6 +1648,15 @@ body.spotify-brainer-open {
 
 .sb-gen-lib-item:hover {
   background: #1a1a1a;
+}
+
+.sb-gen-lib-art {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .sb-gen-lib-play {

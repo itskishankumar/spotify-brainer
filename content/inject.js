@@ -165,6 +165,56 @@
       </div>
 
       <div class="sb-settings-section">
+        <div class="sb-settings-section-title">Album Art Generation</div>
+        <div class="sb-settings-group">
+          <label>Provider</label>
+          <select id="sb-image-provider-select">
+            <option value="imagen">Nano Banana (Google AI)</option>
+          </select>
+        </div>
+        <div class="sb-settings-group">
+          <label>Model</label>
+          <select id="sb-image-model-select"></select>
+        </div>
+        <div class="sb-settings-group">
+          <label>API Key</label>
+          <input type="password" id="sb-image-api-key" placeholder="Enter your API key" />
+          <span class="sb-settings-hint">
+            Get your key at <a href="#" id="sb-image-key-link" target="_blank" style="color:#1DB954">provider site</a>
+          </span>
+        </div>
+        <div class="sb-test-row">
+          <button class="sb-test-btn" id="sb-test-image-gen">Test Connection</button>
+          <span class="sb-test-status" id="sb-test-image-gen-status"></span>
+        </div>
+      </div>
+
+      <div class="sb-settings-section">
+        <div class="sb-settings-section-title">Video Generation</div>
+        <div class="sb-settings-group">
+          <label>Provider</label>
+          <select id="sb-video-provider-select">
+            <option value="veo">Veo (Google AI)</option>
+          </select>
+        </div>
+        <div class="sb-settings-group">
+          <label>Model</label>
+          <select id="sb-video-model-select"></select>
+        </div>
+        <div class="sb-settings-group">
+          <label>API Key</label>
+          <input type="password" id="sb-video-api-key" placeholder="Enter your API key" />
+          <span class="sb-settings-hint">
+            Get your key at <a href="#" id="sb-video-key-link" target="_blank" style="color:#1DB954">provider site</a>
+          </span>
+        </div>
+        <div class="sb-test-row">
+          <button class="sb-test-btn" id="sb-test-video-gen">Test Connection</button>
+          <span class="sb-test-status" id="sb-test-video-gen-status"></span>
+        </div>
+      </div>
+
+      <div class="sb-settings-section">
         <div class="sb-settings-section-title">Data Import</div>
         <div class="sb-settings-group">
           <label>Streaming History Import</label>
@@ -220,6 +270,7 @@
 
         <!-- Audio player -->
         <div id="sb-gen-player" class="sb-gen-player" style="display:none">
+          <img id="sb-gen-album-art" class="sb-gen-album-art" style="display:none" />
           <div id="sb-gen-track-name" class="sb-gen-track-name"></div>
           <div class="sb-gen-waveform" id="sb-gen-waveform">
             ${Array.from({length: 40}, (_, i) => `<div class="sb-gen-bar" style="animation-delay:${(i * 0.05).toFixed(2)}s"></div>`).join('')}
@@ -244,6 +295,14 @@
               <button id="sb-gen-discard-btn" class="sb-gen-discard-btn">Discard</button>
             </div>
           </div>
+          <div class="sb-gen-video-row" id="sb-gen-video-row" style="display:none">
+            <button id="sb-gen-video-btn" class="sb-gen-video-btn">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+              <span id="sb-gen-video-btn-label">Generate Video</span>
+            </button>
+            <span class="sb-gen-video-status" id="sb-gen-video-status"></span>
+          </div>
+          <video id="sb-gen-video" class="sb-gen-video" style="display:none" controls loop></video>
           <div class="sb-gen-prompt-preview">
             <details>
               <summary>View prompt used</summary>
@@ -1054,6 +1113,192 @@
       btn.disabled = false;
       status.textContent = `Connected (${tagCount} tags found)`;
       status.className = 'sb-test-status sb-test-success';
+    } catch (e) {
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      status.textContent = e.message;
+      status.className = 'sb-test-status sb-test-error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'sb-test-status'; }, 10000);
+  });
+
+  // --- Album art generation provider settings ---
+  const IMAGE_GEN_PROVIDERS = {
+    imagen: {
+      displayName: 'Nano Banana (Google AI)',
+      apiKeyUrl: 'https://aistudio.google.com/apikey',
+      keyPlaceholder: 'AIza...',
+      models: [
+        { id: 'imagen-4.0-generate-001', name: 'Nano Banana 4' },
+        { id: 'imagen-4.0-fast-generate-001', name: 'Nano Banana 4 Fast' },
+        { id: 'imagen-4.0-ultra-generate-001', name: 'Nano Banana 4 Ultra' },
+      ],
+    },
+  };
+
+  const imageProviderSelect = document.getElementById('sb-image-provider-select');
+  const imageModelSelect = document.getElementById('sb-image-model-select');
+  const imageApiKeyInput = document.getElementById('sb-image-api-key');
+  const imageKeyLink = document.getElementById('sb-image-key-link');
+
+  function updateImageModelSelect() {
+    const provider = imageProviderSelect.value;
+    const config = IMAGE_GEN_PROVIDERS[provider];
+    if (!config) return;
+    imageModelSelect.innerHTML = config.models
+      .map((m) => `<option value="${m.id}">${m.name}</option>`)
+      .join('');
+    imageApiKeyInput.placeholder = config.keyPlaceholder || 'Enter your API key';
+    imageKeyLink.href = config.apiKeyUrl;
+    chrome.storage.local.get(`sb_image_key_${provider}`, (data) => {
+      imageApiKeyInput.value = data[`sb_image_key_${provider}`] || '';
+    });
+    chrome.storage.local.get(`sb_image_model_${provider}`, (data) => {
+      if (data[`sb_image_model_${provider}`]) {
+        imageModelSelect.value = data[`sb_image_model_${provider}`];
+      } else {
+        chrome.storage.local.set({ [`sb_image_model_${provider}`]: imageModelSelect.value });
+      }
+    });
+  }
+
+  imageProviderSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ sb_image_provider: imageProviderSelect.value });
+    updateImageModelSelect();
+  });
+
+  imageModelSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_image_model_${imageProviderSelect.value}`]: imageModelSelect.value });
+  });
+
+  imageApiKeyInput.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_image_key_${imageProviderSelect.value}`]: imageApiKeyInput.value });
+  });
+
+  chrome.storage.local.get('sb_image_provider', (data) => {
+    if (data.sb_image_provider) {
+      imageProviderSelect.value = data.sb_image_provider;
+    } else {
+      chrome.storage.local.set({ sb_image_provider: imageProviderSelect.value });
+    }
+    updateImageModelSelect();
+  });
+
+  document.getElementById('sb-test-image-gen').addEventListener('click', async () => {
+    const btn = document.getElementById('sb-test-image-gen');
+    const status = document.getElementById('sb-test-image-gen-status');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    status.textContent = '';
+    status.className = 'sb-test-status';
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'image-test',
+        provider: imageProviderSelect.value,
+        apiKey: imageApiKeyInput.value,
+      });
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      if (result.valid) {
+        status.textContent = 'Connected';
+        status.className = 'sb-test-status sb-test-success';
+      } else {
+        status.textContent = result.error || 'Failed';
+        status.className = 'sb-test-status sb-test-error';
+      }
+    } catch (e) {
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      status.textContent = e.message;
+      status.className = 'sb-test-status sb-test-error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'sb-test-status'; }, 10000);
+  });
+
+  // --- Video generation provider settings ---
+  const VIDEO_GEN_PROVIDERS = {
+    veo: {
+      displayName: 'Veo (Google AI)',
+      apiKeyUrl: 'https://aistudio.google.com/apikey',
+      keyPlaceholder: 'AIza...',
+      models: [
+        { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' },
+        { id: 'veo-3.0-generate-preview', name: 'Veo 3' },
+        { id: 'veo-2.0-generate-001', name: 'Veo 2' },
+      ],
+    },
+  };
+
+  const videoProviderSelect = document.getElementById('sb-video-provider-select');
+  const videoModelSelect = document.getElementById('sb-video-model-select');
+  const videoApiKeyInput = document.getElementById('sb-video-api-key');
+  const videoKeyLink = document.getElementById('sb-video-key-link');
+
+  function updateVideoModelSelect() {
+    const provider = videoProviderSelect.value;
+    const config = VIDEO_GEN_PROVIDERS[provider];
+    if (!config) return;
+    videoModelSelect.innerHTML = config.models
+      .map((m) => `<option value="${m.id}">${m.name}</option>`)
+      .join('');
+    videoApiKeyInput.placeholder = config.keyPlaceholder || 'Enter your API key';
+    videoKeyLink.href = config.apiKeyUrl;
+    chrome.storage.local.get(`sb_video_key_${provider}`, (data) => {
+      videoApiKeyInput.value = data[`sb_video_key_${provider}`] || '';
+    });
+    chrome.storage.local.get(`sb_video_model_${provider}`, (data) => {
+      if (data[`sb_video_model_${provider}`]) {
+        videoModelSelect.value = data[`sb_video_model_${provider}`];
+      } else {
+        chrome.storage.local.set({ [`sb_video_model_${provider}`]: videoModelSelect.value });
+      }
+    });
+  }
+
+  videoProviderSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ sb_video_provider: videoProviderSelect.value });
+    updateVideoModelSelect();
+  });
+
+  videoModelSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_video_model_${videoProviderSelect.value}`]: videoModelSelect.value });
+  });
+
+  videoApiKeyInput.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_video_key_${videoProviderSelect.value}`]: videoApiKeyInput.value });
+  });
+
+  chrome.storage.local.get('sb_video_provider', (data) => {
+    if (data.sb_video_provider) {
+      videoProviderSelect.value = data.sb_video_provider;
+    } else {
+      chrome.storage.local.set({ sb_video_provider: videoProviderSelect.value });
+    }
+    updateVideoModelSelect();
+  });
+
+  document.getElementById('sb-test-video-gen').addEventListener('click', async () => {
+    const btn = document.getElementById('sb-test-video-gen');
+    const status = document.getElementById('sb-test-video-gen-status');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    status.textContent = '';
+    status.className = 'sb-test-status';
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'video-test',
+        provider: videoProviderSelect.value,
+        apiKey: videoApiKeyInput.value,
+      });
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      if (result.valid) {
+        status.textContent = 'Connected';
+        status.className = 'sb-test-status sb-test-success';
+      } else {
+        status.textContent = result.error || 'Failed';
+        status.className = 'sb-test-status sb-test-error';
+      }
     } catch (e) {
       btn.textContent = 'Test Connection';
       btn.disabled = false;
@@ -2020,11 +2265,19 @@
     const genNameInput = document.getElementById('sb-gen-name-input');
     const genSaveBtn = document.getElementById('sb-gen-save-btn');
     const genDiscardBtn = document.getElementById('sb-gen-discard-btn');
+    const genAlbumArt = document.getElementById('sb-gen-album-art');
+    const genVideoRow = document.getElementById('sb-gen-video-row');
+    const genVideoBtn = document.getElementById('sb-gen-video-btn');
+    const genVideoBtnLabel = document.getElementById('sb-gen-video-btn-label');
+    const genVideoStatus = document.getElementById('sb-gen-video-status');
+    const genVideo = document.getElementById('sb-gen-video');
     const genLibrary = document.getElementById('sb-gen-library');
     const genLibraryList = document.getElementById('sb-gen-library-list');
 
     let audio = null;
+    let isGeneratingVideo = false;
     let isGenerating = false;
+    let currentSong = null;   // currently displayed song (for video gen)
     let pendingSong = null;   // generated but not yet saved
     let savedSongs = [];      // persisted songs: [{id, audio, mimeType, prompt, userIntent, generatedAt}]
 
@@ -2083,9 +2336,28 @@
     }
 
     function showPlayer(song, showSaveActions) {
+      currentSong = song;
       loadAudio(song.audio, song.mimeType);
       genPromptUsed.textContent = song.prompt || '';
       genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
+      if (song.albumArt) {
+        genAlbumArt.src = `data:${song.albumArt.mimeType};base64,${song.albumArt.image}`;
+        genAlbumArt.style.display = 'block';
+      } else {
+        genAlbumArt.style.display = 'none';
+      }
+      // Show video if song has one, otherwise show generate button
+      if (song.video) {
+        genVideo.src = `data:${song.videoMimeType || 'video/mp4'};base64,${song.video}`;
+        genVideo.style.display = 'block';
+        genVideoRow.style.display = 'none';
+      } else {
+        genVideo.style.display = 'none';
+        genVideoRow.style.display = song.prompt ? 'flex' : 'none';
+        genVideoBtnLabel.textContent = 'Generate Video';
+        genVideoBtn.disabled = false;
+        genVideoStatus.textContent = '';
+      }
       genPlayer.style.display = 'flex';
       genSaveRow.style.display = showSaveActions ? 'block' : 'none';
       if (showSaveActions) {
@@ -2103,7 +2375,10 @@
       genLibrary.style.display = 'block';
       genLibraryList.innerHTML = savedSongs.map((song, idx) => `
         <div class="sb-gen-lib-item" data-idx="${idx}">
-          <button class="sb-gen-lib-play" data-idx="${idx}" title="Play">${ICONS.play}</button>
+          ${song.albumArt
+            ? `<img class="sb-gen-lib-art" src="data:${song.albumArt.mimeType};base64,${song.albumArt.image}" />`
+            : `<button class="sb-gen-lib-play" data-idx="${idx}" title="Play">${ICONS.play}</button>`
+          }
           <div class="sb-gen-lib-info">
             <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userIntent || 'Untitled')}</div>
             <div class="sb-gen-lib-date">${formatDate(song.generatedAt)}</div>
@@ -2112,9 +2387,10 @@
         </div>
       `).join('');
 
-      genLibraryList.querySelectorAll('.sb-gen-lib-play').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const song = savedSongs[parseInt(btn.dataset.idx)];
+      genLibraryList.querySelectorAll('.sb-gen-lib-play, .sb-gen-lib-art').forEach((el) => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.closest('.sb-gen-lib-item').dataset.idx);
+          const song = savedSongs[idx];
           if (!song) return;
           showPlayer(song, false);
           audio.play().then(() => {
@@ -2149,7 +2425,65 @@
       pendingSong = null;
       genSaveRow.style.display = 'none';
       genPlayer.style.display = 'none';
+      genVideo.style.display = 'none';
+      genVideoRow.style.display = 'none';
       if (audio) { audio.pause(); audio = null; }
+    });
+
+    genVideoBtn.addEventListener('click', async () => {
+      if (isGeneratingVideo || !currentSong?.prompt) return;
+
+      const vidProviderData = await chrome.storage.local.get('sb_video_provider');
+      const vidProvider = vidProviderData.sb_video_provider;
+      if (!vidProvider) {
+        genVideoStatus.textContent = 'Set up video gen in Settings';
+        genVideoStatus.className = 'sb-gen-video-status sb-test-error';
+        return;
+      }
+      const vidKeyData = await chrome.storage.local.get(`sb_video_key_${vidProvider}`);
+      const vidKey = vidKeyData[`sb_video_key_${vidProvider}`];
+      if (!vidKey) {
+        genVideoStatus.textContent = 'Add your API key in Settings → Video Generation';
+        genVideoStatus.className = 'sb-gen-video-status sb-test-error';
+        return;
+      }
+      const vidModelData = await chrome.storage.local.get(`sb_video_model_${vidProvider}`);
+      const vidModel = vidModelData[`sb_video_model_${vidProvider}`];
+
+      isGeneratingVideo = true;
+      genVideoBtn.disabled = true;
+      genVideoBtnLabel.textContent = 'Generating...';
+      genVideoStatus.textContent = 'This may take a few minutes';
+      genVideoStatus.className = 'sb-gen-video-status';
+
+      try {
+        const videoPrompt = `Music video visualizer for: ${currentSong.prompt}. Abstract, cinematic, flowing visuals, no text, no people.`;
+        const result = await chrome.runtime.sendMessage({
+          type: 'video-generate',
+          provider: vidProvider,
+          model: vidModel,
+          prompt: videoPrompt,
+          durationSeconds: 8,
+          apiKey: vidKey,
+        });
+        if (result.error) {
+          genVideoStatus.textContent = result.error;
+          genVideoStatus.className = 'sb-gen-video-status sb-test-error';
+        } else {
+          currentSong.video = result.video;
+          currentSong.videoMimeType = result.mimeType;
+          genVideo.src = `data:${result.mimeType};base64,${result.video}`;
+          genVideo.style.display = 'block';
+          genVideoRow.style.display = 'none';
+        }
+      } catch (e) {
+        genVideoStatus.textContent = e.message || 'Video generation failed';
+        genVideoStatus.className = 'sb-gen-video-status sb-test-error';
+      } finally {
+        isGeneratingVideo = false;
+        genVideoBtn.disabled = false;
+        genVideoBtnLabel.textContent = 'Generate Video';
+      }
     });
 
     genPlayBtn.addEventListener('click', () => {
@@ -2213,6 +2547,7 @@
             audio: resp.audio,
             mimeType: resp.mimeType,
             prompt: resp.prompt,
+            albumArt: resp.albumArt || null,
             userIntent,
             generatedAt: Date.now(),
           };

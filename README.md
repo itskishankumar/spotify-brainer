@@ -2,7 +2,7 @@
 
 AI powered brain for Spotify.
 
-A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and makes it all available to an LLM via on-demand tool calls — so it genuinely understands your music identity and can control your playback. It can also generate original music clips tailored to your taste.
+A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and makes it all available to an LLM via on-demand tool calls — so it genuinely understands your music identity and can control your playback. It can also generate original music clips, album art, and music videos tailored to your taste.
 
 ## Features
 
@@ -18,7 +18,9 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
-- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; save and replay clips with a built-in audio player
+- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; two-phase agentic loop (plan tools → execute all → compact results → final prompt) minimizes LLM calls and context usage; save and replay clips with a built-in audio player
+- **Album art generation** — automatically generates album cover art for each music clip using Nano Banana (Google Imagen); art displays in the player and as thumbnails in the saved clips library
+- **Video generation** — on-demand music video generation using Veo (Google AI); generates abstract cinematic visuals from the Lyria prompt; async generation with polling (handles multi-minute Veo processing); inline video player with native controls
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
@@ -81,7 +83,7 @@ When configured, the music generation pipeline fetches crowd-sourced tags from L
 
 1. In Settings → Music Generation, select a provider and model
 2. Enter your API key (for Lyria, get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
-3. Click the sparkle icon (✦) in the header to open the Generate tab
+3. Click the sparkle icon in the header to open the Generate tab
 4. Describe what you're in the mood for:
    - Vague mood: "something chill", "upbeat and energetic"
    - Time period: "a song I would've liked in Sept 2024"
@@ -89,6 +91,21 @@ When configured, the music generation pipeline fetches crowd-sourced tags from L
    - Or leave blank to use your overall taste profile
 5. The LLM gathers the relevant data (playlists, history, top tracks), fetches Last.fm tags for sonic context, and produces a detailed Lyria prompt
 6. Save clips you like — they're stored locally and accessible from the library
+
+### 7. Album art generation (optional)
+
+1. In Settings → Album Art Generation, select Nano Banana (Google AI) and a model
+2. Enter your API key (same Google AI key works)
+3. When configured, album art is **automatically generated** alongside every music clip
+4. Art displays at the top of the player and as thumbnails in the saved clips library
+
+### 8. Video generation (optional)
+
+1. In Settings → Video Generation, select Veo (Google AI) and a model (Veo 3.1, Veo 3, or Veo 2)
+2. Enter your API key (same Google AI key works)
+3. After generating a music clip, click **Generate Video** in the player
+4. Video generation is async — it takes a few minutes (status shown in the UI)
+5. The video appears inline in the player with native playback controls
 
 ## Architecture
 
@@ -100,7 +117,7 @@ spotify-brainer/
 │   ├── inject.css             # Sidebar + layout styles
 │   └── spotify-scraper.js     # DOM scraping (now playing, current view, track credits)
 ├── background/
-│   └── service-worker.js      # API proxy, data pipeline, prompt builder, music gen
+│   └── service-worker.js      # API proxy, data pipeline, prompt builder, music/image/video gen
 ├── llm/
 │   ├── types.js               # Unified LLMRequest/LLMResponse/LLMChunk
 │   ├── adapter.js             # Base adapter interface
@@ -116,6 +133,14 @@ spotify-brainer/
 │   ├── adapter.js             # Base adapter interface
 │   └── adapters/
 │       └── lyria.js           # Lyria (Google AI) adapter
+├── image-gen/
+│   ├── adapter.js             # Base ImageGenAdapter interface
+│   └── adapters/
+│       └── imagen.js          # Nano Banana (Google Imagen) adapter
+├── video-gen/
+│   ├── adapter.js             # Base VideoGenAdapter interface
+│   └── adapters/
+│       └── veo.js             # Veo (Google AI) adapter — predictLongRunning with polling
 ├── lib/
 │   ├── spotify-auth.js        # OAuth PKCE authentication
 │   ├── spotify-controls.js    # Playback, search, playlist, library controls
@@ -154,10 +179,12 @@ GDPR Import  ──→  IndexedDB ──┤
            (play, search, etc.)  (profile, history,
                                   top tracks, etc.)
 
-buildMusicAgentSystemPrompt()  ──→  LLM agentic loop (max 5 rounds)
+Music Generation Pipeline:
+
+buildMusicAgentSystemPrompt()  ──→  Two-phase LLM agentic loop
   (taste profile as baseline)        Claude / OpenAI / Gemini
                                               │
-                                       tool_use calls
+                                   Phase 1: Plan (tool selection)
                                     ┌─────────┼─────────┐
                                     ▼         ▼         ▼
                           get_history_taste  get_playlists  get_lastfm_tags
@@ -169,20 +196,45 @@ buildMusicAgentSystemPrompt()  ──→  LLM agentic loop (max 5 rounds)
                                     │            │        Last.fm API
                                     │            │     artist.getTopTags
                                     ▼            ▼     track.getTopTags
-                                    LLM uses lastfmTags + music knowledge
-                                    to output detailed Lyria JSON prompt
+                           Phase 2: Compact results → final Lyria prompt
                                               │
                                               ▼
-                                    assembleLyriaPrompt()  ──→  MusicGenAdapter  ──→  Generated audio
-                                      (JSON → string)            Lyria                stored locally
+                                    assembleLyriaPrompt()
+                                      (JSON → string)
+                                              │
+                                    ┌─────────┼─────────┐
+                                    ▼         ▼         ▼
+                              MusicGenAdapter  ImageGenAdapter  VideoGenAdapter
+                                Lyria           Nano Banana       Veo
+                             (audio clip)     (album art, auto)  (video, on-demand)
+                                    │              │                │
+                                    ▼              ▼                ▼
+                              Generated audio  Album cover art  Music video
+                              stored locally   shown in player  shown in player
 ```
 
-## Adding a Music Generation Provider
+## Adding Providers
+
+### Music Generation
 
 1. Create `music-gen/adapters/yourprovider.js` extending `MusicGenAdapter`
 2. Implement `validate(apiKey)` and `generate(request, apiKey)`
 3. Add it to `MUSIC_GEN_ADAPTERS` in `background/service-worker.js`
 4. Add an `<option>` and config entry to the Music Generation settings in `content/inject.js`
+
+### Album Art Generation
+
+1. Create `image-gen/adapters/yourprovider.js` extending `ImageGenAdapter`
+2. Implement `validate(apiKey)` and `generate(request, apiKey)` — must return `{ image, mimeType, model }`
+3. Add it to `IMAGE_GEN_ADAPTERS` in `background/service-worker.js`
+4. Add an `<option>` and config entry to the Album Art Generation settings in `content/inject.js`
+
+### Video Generation
+
+1. Create `video-gen/adapters/yourprovider.js` extending `VideoGenAdapter`
+2. Implement `validate(apiKey)` and `generate(request, apiKey)` — must return `{ video, mimeType, model }`
+3. Add it to `VIDEO_GEN_ADAPTERS` in `background/service-worker.js`
+4. Add an `<option>` and config entry to the Video Generation settings in `content/inject.js`
 
 ## Spotify API Notes
 
