@@ -15,6 +15,11 @@ let bufferedChunks = [];
 let drainScheduled = false;
 let chunksReceived = 0;
 
+// --- Recording state (PCM capture → MP3 via lamejs) ---
+let isRecording = false;
+let isRecPaused = false;
+let recordedPcmChunks = [];
+
 // --- Audio playback ---
 
 async function ensureAudioContext() {
@@ -150,6 +155,10 @@ async function connect(apiKey, model, initialPrompts, initialConfig) {
                 console.log(`[Lyria RT] Audio chunk #${chunksReceived}, base64 length: ${data.length}, ~${Math.round(data.length * 0.75)} PCM bytes`);
               }
               const pcmBytes = base64ToBytes(data);
+              // Capture raw PCM for MP3 encoding when recording
+              if (isRecording && !isRecPaused) {
+                recordedPcmChunks.push(new Uint8Array(pcmBytes));
+              }
               bufferedChunks.push(pcmBytes);
               drainBufferedChunks();
             }
@@ -232,6 +241,9 @@ function resetPlayback() {
   isPlaying = false;
   isPaused = false;
   chunksReceived = 0;
+  isRecording = false;
+  isRecPaused = false;
+  recordedPcmChunks = [];
   if (audioCtx) {
     audioCtx.close().catch(() => {});
     audioCtx = null;
@@ -258,6 +270,69 @@ function base64ToBytes(b64) {
   return bytes;
 }
 
+function encodePcmToMp3(pcmChunks) {
+  // Concatenate all PCM chunks
+  let totalLength = 0;
+  for (const chunk of pcmChunks) totalLength += chunk.length;
+  const allPcm = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of pcmChunks) {
+    allPcm.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const sampleCount = Math.floor(allPcm.length / (CHANNELS * BYTES_PER_SAMPLE));
+  console.log(`[Lyria RT] Encoding MP3: ${sampleCount} samples, ${allPcm.length} PCM bytes, ~${Math.round(sampleCount / SAMPLE_RATE)}s`);
+
+  if (sampleCount === 0) return null;
+
+  // Deinterleave stereo 16-bit PCM into separate L/R Int16Arrays
+  const left = new Int16Array(sampleCount);
+  const right = new Int16Array(sampleCount);
+  const view = new DataView(allPcm.buffer, allPcm.byteOffset, allPcm.byteLength);
+  for (let i = 0; i < sampleCount; i++) {
+    const byteOff = i * CHANNELS * BYTES_PER_SAMPLE;
+    left[i] = view.getInt16(byteOff, true);
+    right[i] = view.getInt16(byteOff + BYTES_PER_SAMPLE, true);
+  }
+
+  // Encode with lamejs
+  const mp3enc = new lamejs.Mp3Encoder(CHANNELS, SAMPLE_RATE, 128);
+  const mp3Buffers = [];
+  const blockSize = 1152;
+  for (let i = 0; i < sampleCount; i += blockSize) {
+    const end = Math.min(i + blockSize, sampleCount);
+    const lBlock = left.subarray(i, end);
+    const rBlock = right.subarray(i, end);
+    const mp3buf = mp3enc.encodeBuffer(lBlock, rBlock);
+    if (mp3buf.length > 0) mp3Buffers.push(mp3buf);
+  }
+  const flush = mp3enc.flush();
+  if (flush.length > 0) mp3Buffers.push(flush);
+
+  // Concatenate MP3 buffers
+  let mp3Length = 0;
+  for (const buf of mp3Buffers) mp3Length += buf.length;
+  const mp3Data = new Uint8Array(mp3Length);
+  let pos = 0;
+  for (const buf of mp3Buffers) {
+    mp3Data.set(buf, pos);
+    pos += buf.length;
+  }
+
+  console.log(`[Lyria RT] MP3 encoded: ${mp3Data.length} bytes (~${Math.round(mp3Data.length / 1024)} KB)`);
+  return mp3Data;
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const batchSize = 32768;
+  for (let i = 0; i < bytes.length; i += batchSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + batchSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 function sendStatus(state, detail) {
   chrome.runtime.sendMessage({
     type: 'realtime-status',
@@ -281,6 +356,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+
 
   if (msg.type === 'realtime-play') {
     if (isPaused && audioCtx) {
@@ -311,17 +387,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  if (msg.type === 'realtime-reset-context') {
-    sendPlayback('RESET_CONTEXT');
-    resetPlayback();
-    ensureAudioContext();
-    sendStatus('resetting');
-    setTimeout(() => {
-      sendPlayback('PLAY');
-      isPlaying = true;
-      sendStatus('streaming');
-    }, 500);
+  if (msg.type === 'offscreen-realtime-rec-start') {
+    isRecording = true;
+    isRecPaused = false;
+    recordedPcmChunks = [];
+    console.log('[Lyria RT] PCM recording started');
     sendResponse({ ok: true });
     return false;
   }
+
+  if (msg.type === 'offscreen-realtime-rec-pause') {
+    isRecPaused = true;
+    console.log('[Lyria RT] Recording paused');
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'offscreen-realtime-rec-resume') {
+    isRecPaused = false;
+    console.log('[Lyria RT] Recording resumed');
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'offscreen-realtime-rec-stop') {
+    console.log('[Lyria RT] Recording stop, chunks:', recordedPcmChunks.length);
+    isRecording = false;
+    isRecPaused = false;
+    const chunks = recordedPcmChunks;
+    recordedPcmChunks = [];
+    if (chunks.length === 0) {
+      sendResponse({ audioBase64: null });
+      return false;
+    }
+    const mp3Data = encodePcmToMp3(chunks);
+    if (!mp3Data) {
+      sendResponse({ audioBase64: null });
+      return false;
+    }
+    const audioBase64 = bytesToBase64(mp3Data);
+    sendResponse({ audioBase64, mimeType: 'audio/mpeg' });
+    return false;
+  }
+
 });

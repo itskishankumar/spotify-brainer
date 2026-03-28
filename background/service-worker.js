@@ -10,7 +10,7 @@ import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
 import { getAccessToken, isLoggedIn, startLogin, logout, getClientId, setClientId } from '../lib/spotify-auth.js';
 import { ImagenAdapter } from '../image-gen/adapters/imagen.js';
 import { VeoAdapter } from '../video-gen/adapters/veo.js';
-import { initLastFmCache, enrichArtistsWithTags, enrichTracksWithTags, aggregateTopTags, getLastFmApiKey } from '../lib/lastfm.js';
+import { initLastFmCache, enrichArtistsWithTags, enrichTracksWithTags, aggregateTopTags, getLastFmApiKey, getCachedArtistTags } from '../lib/lastfm.js';
 import { computeAnchors, interpolateAtPosition } from '../music-gen/realtime-anchors.js';
 
 const MUSIC_GEN_ADAPTERS = { lyria: new LyriaAdapter() };
@@ -33,7 +33,7 @@ function getMusicGenAdapter(name) {
 }
 
 // --- Lyria RealTime state ---
-const realtimeState = { anchors: null, tabId: null };
+const realtimeState = { anchors: null, tabId: null, scale: null, lastPosition: 50 };
 let offscreenCreated = false;
 
 async function ensureOffscreen() {
@@ -647,7 +647,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.warn('[Spotify Brainer] LLM flow produced no prompt, using fallback. Mode:', mode);
           if (mode === 'anti-taste') {
             // Anti-taste fallback: use the realtime anchor builder which picks blind-spot genres
-            const anchors = computeAnchors(intelligence, historyMetrics, spotifyData);
+            const anchors = computeAnchors(intelligence, historyMetrics, spotifyData, getCachedArtistTags());
             const anti = anchors.anti;
             lyriaPrompt = `An original composition: ${anti.prompt}. At ${anti.params.bpm} BPM.`;
             genTags = anti.prompt.split(',').slice(0, 3).map((t) => t.trim());
@@ -804,6 +804,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // --- Lyria RealTime relay ---
 
+  if (msg.type === 'realtime-spectrum') {
+    const anchors = computeAnchors(intelligence, historyMetrics, spotifyData, getCachedArtistTags());
+    const positionsSummary = anchors.positions.map((p) => ({
+      genres: p.sets.map((s) => s.genre),
+      weights: p.sets.map((s) => s.weight),
+      bpm: p.config.bpm,
+      density: p.config.density,
+      brightness: p.config.brightness,
+    }));
+    sendResponse({ positions: positionsSummary });
+    return true;
+  }
+
   if (msg.type === 'realtime-start') {
     (async () => {
       try {
@@ -811,13 +824,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!apiKey) { sendResponse({ error: 'No API key provided.' }); return; }
 
         // Compute anchors from cached taste data
-        const anchors = computeAnchors(intelligence, historyMetrics, spotifyData);
+        const anchors = computeAnchors(intelligence, historyMetrics, spotifyData, getCachedArtistTags());
         // Store anchors for slider updates
         realtimeState.anchors = anchors;
         realtimeState.tabId = sender.tab?.id;
 
         // Interpolate at initial position
-        const initial = interpolateAtPosition(anchors, sliderPosition ?? 50);
+        realtimeState.lastPosition = sliderPosition ?? 50;
+        const initial = interpolateAtPosition(anchors, realtimeState.lastPosition);
+        const config = { ...initial.config };
+        if (realtimeState.scale) config.scale = realtimeState.scale;
 
         // Create offscreen document if needed
         await ensureOffscreen();
@@ -828,10 +844,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           apiKey,
           model: 'models/lyria-realtime-exp',
           prompts: initial.prompts,
-          config: initial.config,
+          config,
         });
 
-        sendResponse({ ok: true });
+        // Send positions data so UI can render the spectrum debug view
+        const positionsSummary = anchors.positions.map((p, i) => ({
+          genres: p.sets.map((s) => s.genre),
+          weights: p.sets.map((s) => s.weight),
+          bpm: p.config.bpm,
+          density: p.config.density,
+          brightness: p.config.brightness,
+        }));
+        sendResponse({ ok: true, positions: positionsSummary });
       } catch (e) {
         console.error('[Spotify Brainer] Realtime start failed:', e.message);
         sendResponse({ error: e.message });
@@ -842,12 +866,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === 'realtime-slider') {
     if (!realtimeState.anchors) { sendResponse({ error: 'No active session' }); return; }
+    realtimeState.lastPosition = msg.position;
     const result = interpolateAtPosition(realtimeState.anchors, msg.position);
+    const config = { ...result.config };
+    if (realtimeState.scale) config.scale = realtimeState.scale;
     chrome.runtime.sendMessage({
       type: 'realtime-update-params',
       prompts: result.prompts,
-      config: result.config,
+      config,
     }).catch(() => {});
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'realtime-scale') {
+    realtimeState.scale = msg.scale || null;
+    // Send updated config with new scale
+    if (realtimeState.anchors) {
+      const result = interpolateAtPosition(realtimeState.anchors, realtimeState.lastPosition);
+      const config = { ...result.config };
+      if (realtimeState.scale) config.scale = realtimeState.scale;
+      chrome.runtime.sendMessage({
+        type: 'realtime-update-params',
+        prompts: result.prompts,
+        config,
+      }).catch(() => {});
+    }
     sendResponse({ ok: true });
     return false;
   }
@@ -871,6 +915,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     closeOffscreen();
     sendResponse({ ok: true });
     return false;
+  }
+
+  // Recording controls — forward to offscreen with prefixed type to avoid self-loop
+  if (msg.type === 'realtime-rec-start' || msg.type === 'realtime-rec-pause' || msg.type === 'realtime-rec-resume') {
+    chrome.runtime.sendMessage({ type: 'offscreen-' + msg.type }).catch(() => {});
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'realtime-rec-stop') {
+    chrome.runtime.sendMessage({ type: 'offscreen-realtime-rec-stop' }, (resp) => {
+      if (resp?.audioBase64) {
+        const now = new Date();
+        const pad = (n) => n.toString().padStart(2, '0');
+        const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+        const filename = `spotify-brainer-realtime-generation-${dateStr}.mp3`;
+        chrome.downloads.download({
+          url: `data:audio/mpeg;base64,${resp.audioBase64}`,
+          filename,
+          saveAs: false,
+        }, () => {
+          sendResponse({ ok: true, downloaded: true });
+        });
+      } else {
+        sendResponse({ ok: false, downloaded: false });
+      }
+    });
+    return true;
   }
 
   // Forward realtime status from offscreen to content script
@@ -1512,6 +1584,7 @@ const DATA_LOAD_STEPS = [
   { id: 'savedAlbums',   label: 'Saved albums' },
   { id: 'intelligence',  label: 'Computing taste profile' },
   { id: 'history',       label: 'Loading historical metrics' },
+  { id: 'lastfm',        label: 'Enriching with Last.fm tags' },
 ];
 
 function sendProgress(tabId, stepIndex, stepLabel, status, detail) {
@@ -1733,6 +1806,36 @@ async function fetchSpotifyData(tabId) {
         `${historyMetrics.lifetimeStats.totalPlays.toLocaleString()} plays over ${historyMetrics.lifetimeStats.totalYears} years`);
     } else {
       sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', 'No GDPR history imported yet');
+    }
+
+    // Step 9: Enrich top artists with Last.fm tags (warms cache for spectrum & music gen)
+    stepIdx = 9;
+    sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
+    try {
+      const lastfmKey = await getLastFmApiKey();
+      if (lastfmKey) {
+        // Collect unique artists across all time ranges
+        const seen = new Set();
+        const uniqueArtists = [];
+        for (const range of ['short', 'medium', 'long']) {
+          for (const a of (spotifyData.topArtists[range] || [])) {
+            const key = a.name?.toLowerCase();
+            if (key && !seen.has(key)) {
+              seen.add(key);
+              uniqueArtists.push({ name: a.name });
+            }
+          }
+        }
+        await enrichArtistsWithTags(uniqueArtists, lastfmKey);
+        const cached = getCachedArtistTags();
+        const tagCount = Object.values(cached).reduce((sum, tags) => sum + tags.length, 0);
+        sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done',
+          `${Object.keys(cached).length} artists, ${tagCount} tags`);
+      } else {
+        sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', 'No API key configured');
+      }
+    } catch (e) {
+      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'error', e.message);
     }
 
     // Record load time and persist to cache

@@ -41,9 +41,9 @@
   top: 0;
   right: 0;
   height: 100vh;
-  width: 380px;
+  width: 440px;
   min-width: 280px;
-  max-width: 600px;
+  max-width: 720px;
   z-index: 9998;
   background: #121212;
   border-left: 1px solid #282828;
@@ -1536,30 +1536,6 @@ body.spotify-brainer-open {
   color: #a7a7a7;
 }
 
-.sb-gen-export-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #282828;
-  border: 1px solid #535353;
-  color: #b3b3b3;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sb-gen-export-btn:hover {
-  background: #333;
-  color: #fff;
-}
-
-.sb-gen-export-btn svg {
-  width: 14px;
-  height: 14px;
-  fill: currentColor;
-}
 
 .sb-gen-video {
   width: 100%;
@@ -1975,7 +1951,8 @@ body.spotify-brainer-open {
   margin-top: 2px;
 }
 
-.sb-gen-lib-delete {
+.sb-gen-lib-delete,
+.sb-gen-lib-export {
   background: none;
   border: none;
   color: #535353;
@@ -1992,7 +1969,12 @@ body.spotify-brainer-open {
   color: #f15e6c;
 }
 
-.sb-gen-lib-delete svg {
+.sb-gen-lib-export:hover {
+  color: #1DB954;
+}
+
+.sb-gen-lib-delete svg,
+.sb-gen-lib-export svg {
   width: 14px;
   height: 14px;
   fill: currentColor;
@@ -2041,23 +2023,44 @@ body.spotify-brainer-open {
 .sb-rt-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  padding: 20px 0;
+  align-items: stretch;
+  gap: 16px;
+  padding: 0 12px 20px;
 }
 
-/* Visualizer bars */
+/* Visualizer */
 .sb-rt-visualizer {
-  display: flex;
-  align-items: flex-end;
+  display: none;
+  align-items: center;
   justify-content: center;
-  gap: 4px;
+  align-self: center;
   height: 60px;
-  opacity: 0.3;
-  transition: opacity 0.3s;
 }
+.sb-rt-visualizer.loading,
 .sb-rt-visualizer.active {
-  opacity: 1;
+  display: flex;
+}
+
+/* Loader (shown while generating, before audio streams) */
+.sb-rt-viz-loader {
+  display: none;
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.3px;
+}
+.sb-rt-visualizer.loading .sb-rt-viz-loader {
+  display: block;
+}
+
+/* Bars (shown when audio is actively streaming) */
+.sb-rt-viz-bars {
+  display: none;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100%;
+}
+.sb-rt-visualizer.active .sb-rt-viz-bars {
+  display: flex;
 }
 .sb-rt-viz-bar {
   width: 6px;
@@ -2079,70 +2082,204 @@ body.spotify-brainer-open {
   50% { height: 50px; }
 }
 
-/* Slider */
-.sb-rt-slider-wrap {
+/* Spectrum — interactive slider control */
+.sb-rt-spectrum-wrap {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
-.sb-rt-slider-labels {
+.sb-rt-spectrum-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
-  color: #686868;
+  font-size: 10px;
+  font-weight: 600;
   padding: 0 2px;
 }
-.sb-rt-label-anti { color: #dc3232; }
-.sb-rt-label-current { color: #1DB954; }
-.sb-rt-label-future { color: #3c78d8; }
+.sb-rt-label-anti { color: #f07070; }
+.sb-rt-label-current { color: #1ed760; text-align: center; flex: 1; }
+.sb-rt-label-future { color: #7ab8f0; }
 
-.sb-rt-slider {
-  -webkit-appearance: none;
-  appearance: none;
+.sb-rt-spectrum {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: #404040;
-  outline: none;
+  display: flex;
+  gap: 2px;
+  padding: 4px 0;
+  position: relative;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.sb-rt-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--sb-rt-color, #1DB954);
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-  transition: background 0.15s;
+.sb-rt-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  padding: 6px 2px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s, opacity 0.15s, box-shadow 0.15s, border-color 0.15s;
+  opacity: 0.7;
+  min-width: 0;
 }
-.sb-rt-slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--sb-rt-color, #1DB954);
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+.sb-rt-step-bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  margin-bottom: 5px;
+  transition: background 0.3s;
+}
+.sb-rt-step-genres {
+  font-size: 9px;
+  line-height: 1.3;
+  color: #ffffff;
+  text-align: center;
+  overflow: hidden;
+  width: 100%;
+}
+.sb-rt-step-genres span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sb-rt-slider-value {
-  text-align: center;
-  font-size: 28px;
-  font-weight: 700;
-  color: #1DB954;
-  line-height: 1;
-  transition: color 0.15s;
+/* Branch connector between spectrum and scrubber */
+.sb-rt-branches {
+  width: 100%;
+  height: 28px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Scrubber track below spectrum — Spotify-style */
+.sb-rt-scrubber {
+  width: 100%;
+  height: 16px;
+  position: relative;
+  cursor: pointer;
+  margin-top: 2px;
+}
+.sb-rt-scrubber-track {
+  display: none;
+}
+.sb-rt-scrubber-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
 /* Transport controls */
+/* Piano keyboard */
+.sb-rt-piano-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  width: 100%;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+.sb-rt-piano-label {
+  font-size: 10px;
+  color: #686868;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sb-rt-piano {
+  display: flex;
+  position: relative;
+  height: 100px;
+  user-select: none;
+  width: 100%;
+}
+.sb-piano-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  box-sizing: border-box;
+  padding-bottom: 4px;
+  gap: 1px;
+}
+.sb-piano-key.white {
+  flex: 1;
+  height: 100px;
+  background: linear-gradient(to bottom, #e8e8e8, #d4d4d4);
+  border: 1px solid #999;
+  border-radius: 0 0 4px 4px;
+  z-index: 1;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.3), inset 0 -2px 2px rgba(0,0,0,0.1);
+}
+.sb-piano-key.white:hover {
+  background: linear-gradient(to bottom, #f5f5f5, #e0e0e0);
+}
+.sb-piano-key.white.pressed {
+  background: linear-gradient(to bottom, #b8f0cd, #7de09a);
+  border-color: #1DB954;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.2), inset 0 1px 2px rgba(29,185,84,0.2);
+  transform: translateY(2px);
+  height: 98px;
+}
+.sb-piano-key.black {
+  width: 26px;
+  height: 62px;
+  background: linear-gradient(to bottom, #3a3a3a, #1a1a1a);
+  border: 1px solid #111;
+  border-radius: 0 0 3px 3px;
+  margin-left: -13px;
+  margin-right: -13px;
+  z-index: 2;
+  box-shadow: 0 3px 4px rgba(0,0,0,0.5), inset 0 -2px 3px rgba(0,0,0,0.3);
+  padding-bottom: 3px;
+}
+.sb-piano-key.black:hover {
+  background: linear-gradient(to bottom, #4a4a4a, #2a2a2a);
+}
+.sb-piano-key.black.pressed {
+  background: linear-gradient(to bottom, #1a6b35, #0d4a22);
+  border-color: #1DB954;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 2px rgba(29,185,84,0.3);
+  transform: translateY(2px);
+  height: 60px;
+}
+.sb-piano-note {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.sb-piano-minor {
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0.6;
+}
+.sb-piano-key.white .sb-piano-note { color: #333; }
+.sb-piano-key.white .sb-piano-minor { color: #666; }
+.sb-piano-key.black .sb-piano-note { color: #ccc; }
+.sb-piano-key.black .sb-piano-minor { color: #888; }
+.sb-piano-key.white.pressed .sb-piano-note { color: #0a5c2a; }
+.sb-piano-key.white.pressed .sb-piano-minor { color: #1a7a40; }
+.sb-piano-key.black.pressed .sb-piano-note { color: #1DB954; }
+.sb-piano-key.black.pressed .sb-piano-minor { color: #1DB954; }
+
 .sb-rt-controls {
   display: flex;
   gap: 16px;
   align-items: center;
+  justify-content: center;
 }
 .sb-rt-ctrl-btn {
   background: #282828;
@@ -2166,23 +2303,100 @@ body.spotify-brainer-open {
   transform: scale(1.05);
 }
 .sb-rt-stop-btn {
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
+  background: #e85555;
+  color: #000;
 }
 .sb-rt-stop-btn:hover:not(:disabled) {
-  background: #383838;
+  background: #f06b6b;
+  transform: scale(1.05);
 }
 .sb-rt-stop-btn:disabled {
   opacity: 0.3;
   cursor: default;
 }
-
-/* Status + params */
+/* Status row with rec pill */
+.sb-rt-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
 .sb-rt-status {
   font-size: 13px;
   color: #1DB954;
   font-weight: 600;
   text-align: center;
+}
+/* Record pill */
+.sb-rt-rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #282828;
+  border: 1px solid #404040;
+  border-radius: 16px;
+  padding: 6px 14px 6px 10px;
+  color: #777;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.sb-rt-rec-pill:hover:not(:disabled) {
+  border-color: #e85555;
+  color: #e85555;
+}
+.sb-rt-rec-pill:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.sb-rt-rec-pill.recording {
+  background: rgba(232,85,85,0.15);
+  border-color: #e85555;
+  color: #e85555;
+  animation: sb-rec-pulse 1.2s ease-in-out infinite;
+}
+.sb-rt-rec-pill.rec-paused {
+  background: rgba(232,85,85,0.12);
+  border-color: #e85555;
+  color: #e85555;
+  animation: none;
+}
+.sb-rt-rec-label { pointer-events: none; }
+.sb-rt-rec-stop,
+.sb-rt-rec-pause,
+.sb-rt-rec-resume {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+  line-height: 1;
+}
+.sb-rt-rec-stop:hover,
+.sb-rt-rec-pause:hover,
+.sb-rt-rec-resume:hover {
+  background: rgba(255,255,255,0.25);
+}
+.sb-rt-rec-timer {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e85555;
+  font-family: 'Courier New', monospace;
+}
+@keyframes sb-rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 .sb-rt-params {
   font-size: 11px;

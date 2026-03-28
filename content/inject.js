@@ -254,7 +254,7 @@
           <h2>Generate Music</h2>
           <p id="sb-gen-subtitle">AI-generated music tailored to your taste</p>
           <div class="sb-gen-mode-toggle">
-            <button id="sb-gen-mode-clip" class="sb-gen-mode-btn active">Clip</button>
+            <button id="sb-gen-mode-clip" class="sb-gen-mode-btn active">One Shot</button>
             <button id="sb-gen-mode-realtime" class="sb-gen-mode-btn">Realtime</button>
           </div>
         </div>
@@ -325,10 +325,6 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
               <span id="sb-gen-video-btn-label">Generate Video</span>
             </button>
-            <button id="sb-gen-export-btn" class="sb-gen-export-btn">
-              ${ICONS.export}
-              Export MP3
-            </button>
             <span class="sb-gen-video-status" id="sb-gen-video-status"></span>
           </div>
           <video id="sb-gen-video" class="sb-gen-video" style="display:none" controls loop></video>
@@ -341,7 +337,7 @@
           </div>
           <div class="sb-gen-prompt-preview">
             <details>
-              <summary>View System prompt</summary>
+              <summary>System prompt</summary>
               <p id="sb-gen-prompt-used"></p>
             </details>
           </div>
@@ -357,20 +353,44 @@
         <!-- Realtime mode panel -->
         <div id="sb-rt-panel" class="sb-rt-panel" style="display:none">
           <div class="sb-rt-visualizer" id="sb-rt-visualizer">
-            <div class="sb-rt-viz-bar"></div>
-            <div class="sb-rt-viz-bar"></div>
-            <div class="sb-rt-viz-bar"></div>
-            <div class="sb-rt-viz-bar"></div>
-            <div class="sb-rt-viz-bar"></div>
+            <div class="sb-rt-viz-loader" id="sb-rt-viz-loader">Generating...</div>
+            <div class="sb-rt-viz-bars" id="sb-rt-viz-bars">
+              <div class="sb-rt-viz-bar"></div>
+              <div class="sb-rt-viz-bar"></div>
+              <div class="sb-rt-viz-bar"></div>
+              <div class="sb-rt-viz-bar"></div>
+              <div class="sb-rt-viz-bar"></div>
+            </div>
           </div>
-          <div class="sb-rt-slider-wrap">
-            <div class="sb-rt-slider-labels">
+          <div class="sb-rt-spectrum-wrap">
+            <div class="sb-rt-spectrum-labels">
               <span class="sb-rt-label-anti">Anti-Taste</span>
-              <span class="sb-rt-label-current">You Now</span>
+              <span class="sb-rt-label-current">Me RN</span>
               <span class="sb-rt-label-future">Future Me</span>
             </div>
-            <input type="range" id="sb-rt-slider" class="sb-rt-slider" min="0" max="100" value="50" step="1" />
-            <div class="sb-rt-slider-value" id="sb-rt-slider-value">50</div>
+            <div class="sb-rt-spectrum" id="sb-rt-spectrum"></div>
+            <svg class="sb-rt-branches" id="sb-rt-branches" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div class="sb-rt-scrubber" id="sb-rt-scrubber">
+              <div class="sb-rt-scrubber-track"><div class="sb-rt-scrubber-gradient"></div><div class="sb-rt-scrubber-fill" id="sb-rt-scrubber-fill"></div></div>
+              <div class="sb-rt-scrubber-dot" id="sb-rt-scrubber-dot"></div>
+            </div>
+          </div>
+          <div class="sb-rt-piano-wrap" id="sb-rt-keys">
+            <div class="sb-rt-piano-label">Key</div>
+            <div class="sb-rt-piano">
+              <div class="sb-piano-key white" data-scale="C_MAJOR_A_MINOR"><span class="sb-piano-note">C</span><span class="sb-piano-minor">Am</span></div>
+              <div class="sb-piano-key black" data-scale="D_FLAT_MAJOR_B_FLAT_MINOR"><span class="sb-piano-note">Db</span><span class="sb-piano-minor">Bbm</span></div>
+              <div class="sb-piano-key white" data-scale="D_MAJOR_B_MINOR"><span class="sb-piano-note">D</span><span class="sb-piano-minor">Bm</span></div>
+              <div class="sb-piano-key black" data-scale="E_FLAT_MAJOR_C_MINOR"><span class="sb-piano-note">Eb</span><span class="sb-piano-minor">Cm</span></div>
+              <div class="sb-piano-key white" data-scale="E_MAJOR_D_FLAT_MINOR"><span class="sb-piano-note">E</span><span class="sb-piano-minor">Dbm</span></div>
+              <div class="sb-piano-key white" data-scale="F_MAJOR_D_MINOR"><span class="sb-piano-note">F</span><span class="sb-piano-minor">Dm</span></div>
+              <div class="sb-piano-key black" data-scale="G_FLAT_MAJOR_E_FLAT_MINOR"><span class="sb-piano-note">Gb</span><span class="sb-piano-minor">Ebm</span></div>
+              <div class="sb-piano-key white" data-scale="G_MAJOR_E_MINOR"><span class="sb-piano-note">G</span><span class="sb-piano-minor">Em</span></div>
+              <div class="sb-piano-key black" data-scale="A_FLAT_MAJOR_F_MINOR"><span class="sb-piano-note">Ab</span><span class="sb-piano-minor">Fm</span></div>
+              <div class="sb-piano-key white" data-scale="A_MAJOR_G_FLAT_MINOR"><span class="sb-piano-note">A</span><span class="sb-piano-minor">Gbm</span></div>
+              <div class="sb-piano-key black" data-scale="B_FLAT_MAJOR_G_MINOR"><span class="sb-piano-note">Bb</span><span class="sb-piano-minor">Gm</span></div>
+              <div class="sb-piano-key white" data-scale="B_MAJOR_A_FLAT_MINOR"><span class="sb-piano-note">B</span><span class="sb-piano-minor">Abm</span></div>
+            </div>
           </div>
           <div class="sb-rt-controls">
             <button id="sb-rt-play" class="sb-rt-ctrl-btn sb-rt-play-btn" title="Play / Pause">
@@ -380,7 +400,13 @@
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
             </button>
           </div>
-          <div id="sb-rt-status" class="sb-rt-status">Ready</div>
+          <div class="sb-rt-status-row">
+            <div id="sb-rt-status" class="sb-rt-status">Ready</div>
+            <button id="sb-rt-rec" class="sb-rt-rec-pill" title="Record" disabled>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
+              <span class="sb-rt-rec-label">REC</span>
+            </button>
+          </div>
           <div class="sb-rt-params" id="sb-rt-params"></div>
         </div>
       </div>
@@ -524,6 +550,10 @@
     settingsEl.classList.toggle('open', name === 'settings');
     dataViewerEl.classList.toggle('open', name === 'data');
     generateEl.classList.toggle('open', name === 'generate');
+    // Stop realtime playback when leaving the generate panel
+    if (name !== 'generate') {
+      chrome.runtime.sendMessage({ type: 'realtime-stop' }).catch(() => {});
+    }
     // Close chats dropdown when switching panels
     showingConvList = false;
     convListEl.classList.remove('open');
@@ -2329,7 +2359,6 @@
     const genVideoBtnLabel = document.getElementById('sb-gen-video-btn-label');
     const genVideoStatus = document.getElementById('sb-gen-video-status');
     const genVideo = document.getElementById('sb-gen-video');
-    const genExportBtn = document.getElementById('sb-gen-export-btn');
     const genLibrary = document.getElementById('sb-gen-library');
     const genLibraryList = document.getElementById('sb-gen-library-list');
     const genLibCount = document.getElementById('sb-gen-lib-count');
@@ -2441,6 +2470,7 @@
         document.querySelector('.sb-gen-track-name-row').style.display = 'flex';
         genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
         genRenameBtn.style.display = 'inline-flex';
+
       }
       genRenameInput.style.display = 'none';
       // Render genre tags + mode badge
@@ -2510,14 +2540,15 @@
             ${song.tags?.length ? `<div class="sb-gen-lib-tags">${song.tags.map(t => `<span class="sb-gen-tag sb-gen-tag-sm">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             <div class="sb-gen-lib-date">${formatDate(song.generatedAt)}</div>
           </div>
+          <button class="sb-gen-lib-export" data-idx="${idx}" title="Download MP3">${ICONS.export}</button>
           <button class="sb-gen-lib-delete" data-idx="${idx}" title="Delete">${ICONS.trash}</button>
         </div>
       `).join('');
 
       genLibraryList.querySelectorAll('.sb-gen-lib-item').forEach((el) => {
         el.addEventListener('click', (e) => {
-          // Don't trigger on delete button clicks or during generation
-          if (e.target.closest('.sb-gen-lib-delete')) return;
+          // Don't trigger on delete/export button clicks or during generation
+          if (e.target.closest('.sb-gen-lib-delete') || e.target.closest('.sb-gen-lib-export')) return;
           if (isGenerating) return;
           const idx = parseInt(el.dataset.idx);
           const song = savedSongs[idx];
@@ -2535,6 +2566,14 @@
           savedSongs.splice(idx, 1);
           persistSongs();
           renderLibrary();
+        });
+      });
+
+      genLibraryList.querySelectorAll('.sb-gen-lib-export').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const song = savedSongs[idx];
+          if (song) exportSongAsMp3(song);
         });
       });
     }
@@ -2574,6 +2613,7 @@
       genRenameInput.value = genTrackName.textContent;
       genTrackName.style.display = 'none';
       genRenameBtn.style.display = 'none';
+
       genRenameInput.style.display = 'block';
       genRenameInput.focus();
       genRenameInput.select();
@@ -2591,6 +2631,7 @@
       genRenameInput.style.display = 'none';
       genTrackName.style.display = 'block';
       genRenameBtn.style.display = 'inline-flex';
+      genExportBtn.style.display = 'inline-flex';
     }
 
     genRenameInput.addEventListener('keydown', (e) => {
@@ -2599,18 +2640,19 @@
         genRenameInput.style.display = 'none';
         genTrackName.style.display = 'block';
         genRenameBtn.style.display = 'inline-flex';
+
       }
     });
     genRenameInput.addEventListener('blur', commitRename);
 
     // Export MP3 with ID3v2 tags (title + cover art)
-    genExportBtn.addEventListener('click', () => {
-      if (!currentSong) return;
-      const title = currentSong.name || currentSong.userIntent || 'Spotify Brainer';
+    function exportSongAsMp3(song) {
+      if (!song) return;
+      const title = song.name || song.userIntent || 'Spotify Brainer';
       const artist = 'Spotify Brainer';
 
       // Decode the base64 audio
-      const audioBytes = Uint8Array.from(atob(currentSong.audio), (c) => c.charCodeAt(0));
+      const audioBytes = Uint8Array.from(atob(song.audio), (c) => c.charCodeAt(0));
 
       // Build ID3v2.3 tag
       const frames = [];
@@ -2633,9 +2675,9 @@
       frames.push(textFrame('TPE1', artist));
 
       // APIC frame (cover art) if available
-      if (currentSong.albumArt) {
-        const imgBytes = Uint8Array.from(atob(currentSong.albumArt.image), (c) => c.charCodeAt(0));
-        const mimeStr = currentSong.albumArt.mimeType || 'image/png';
+      if (song.albumArt) {
+        const imgBytes = Uint8Array.from(atob(song.albumArt.image), (c) => c.charCodeAt(0));
+        const mimeStr = song.albumArt.mimeType || 'image/png';
         const mimeEncoded = new TextEncoder().encode(mimeStr);
         // APIC: encoding(1) + mime+null + picture_type(1) + description_null(1) + image_data
         const apicPayload = 1 + mimeEncoded.length + 1 + 1 + 1 + imgBytes.length;
@@ -2682,7 +2724,7 @@
       a.download = `${title.replace(/[^a-zA-Z0-9 _-]/g, '')}.mp3`;
       a.click();
       URL.revokeObjectURL(url);
-    });
+    }
 
     genVideoBtn.addEventListener('click', async () => {
       if (isGeneratingVideo || !currentSong?.prompt) return;
@@ -2851,16 +2893,208 @@
     const rtPanel = document.getElementById('sb-rt-panel');
     const modeClipBtn = document.getElementById('sb-gen-mode-clip');
     const modeRtBtn = document.getElementById('sb-gen-mode-realtime');
-    const rtSlider = document.getElementById('sb-rt-slider');
-    const rtSliderValue = document.getElementById('sb-rt-slider-value');
     const rtPlayBtn = document.getElementById('sb-rt-play');
     const rtStopBtn = document.getElementById('sb-rt-stop');
+    const rtRecBtn = document.getElementById('sb-rt-rec');
     const rtStatus = document.getElementById('sb-rt-status');
     const rtParams = document.getElementById('sb-rt-params');
     const rtVisualizer = document.getElementById('sb-rt-visualizer');
+    const rtSpectrum = document.getElementById('sb-rt-spectrum');
+    const rtScrubber = document.getElementById('sb-rt-scrubber');
+    const rtScrubberDot = document.getElementById('sb-rt-scrubber-dot');
+    const rtBranches = document.getElementById('sb-rt-branches');
+    const rtScrubberFill = document.getElementById('sb-rt-scrubber-fill');
 
     let rtStreaming = false;
     let rtPaused = false;
+    let rtPositions = null;
+    let rtPosition = 50; // 0-100 continuous position
+    let rtRecording = false;
+    let rtRecPaused = false;
+    let rtRecStartTime = 0;
+    let rtRecPausedDuration = 0;
+    let rtRecPauseStart = 0;
+    let rtRecTimerInterval = null;
+
+    function renderSpectrum(positions) {
+      rtPositions = positions;
+      rtSpectrum.innerHTML = '';
+
+      positions.forEach((pos, i) => {
+        const step = document.createElement('div');
+        step.className = 'sb-rt-step';
+        step.dataset.idx = i;
+
+        // Color bar: red(0) → green(5) → blue(10)
+        let color;
+        if (i <= 5) {
+          const t = i / 5;
+          color = `rgb(${Math.round(220*(1-t)+29*t)},${Math.round(50*(1-t)+185*t)},${Math.round(50*(1-t)+84*t)})`;
+        } else {
+          const t = (i - 5) / 5;
+          color = `rgb(${Math.round(29*(1-t)+60*t)},${Math.round(185*(1-t)+120*t)},${Math.round(84*(1-t)+216*t)})`;
+        }
+
+        const bar = document.createElement('div');
+        bar.className = 'sb-rt-step-bar';
+        bar.style.background = color;
+
+        const genres = document.createElement('div');
+        genres.className = 'sb-rt-step-genres';
+        genres.title = pos.genres.join(', ') + ` | BPM:${pos.bpm} D:${pos.density} B:${pos.brightness}`;
+        pos.genres.forEach((g, gi) => {
+          const span = document.createElement('span');
+          span.textContent = g;
+          const w = pos.weights[gi] ?? 0.5;
+          if (w < 0.85) span.style.opacity = (0.35 + w * 0.55).toFixed(2);
+          genres.appendChild(span);
+        });
+
+        step.appendChild(bar);
+        step.appendChild(genres);
+        rtSpectrum.appendChild(step);
+      });
+
+      updateSpectrumHighlight();
+    }
+
+    // --- Spectrum as interactive control: click & drag ---
+    let rtDragging = false;
+
+    function scrubberPosFromEvent(e) {
+      const rect = rtScrubber.getBoundingClientRect();
+      const x = (e.clientX || e.touches?.[0]?.clientX || 0) - rect.left;
+      return Math.round(Math.max(0, Math.min(100, (x / rect.width) * 100)));
+    }
+
+    function setPosition(pos) {
+      rtPosition = pos;
+      updateSpectrumHighlight();
+      if (!rtStreaming) return;
+      clearTimeout(rtSliderDebounce);
+      rtSliderDebounce = setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'realtime-slider', position: pos });
+      }, 150);
+    }
+
+    // Click on a block to snap to its center
+    rtSpectrum.addEventListener('click', (e) => {
+      const step = e.target.closest('.sb-rt-step');
+      if (step) setPosition(parseInt(step.dataset.idx) * 10);
+    });
+
+    // Drag on the scrubber track for precise control
+    rtScrubber.addEventListener('mousedown', (e) => {
+      rtDragging = true;
+      setPosition(scrubberPosFromEvent(e));
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!rtDragging) return;
+      setPosition(scrubberPosFromEvent(e));
+    });
+    document.addEventListener('mouseup', () => { rtDragging = false; });
+    rtScrubber.addEventListener('touchstart', (e) => {
+      rtDragging = true;
+      setPosition(scrubberPosFromEvent(e));
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!rtDragging) return;
+      setPosition(scrubberPosFromEvent(e));
+    }, { passive: true });
+    document.addEventListener('touchend', () => { rtDragging = false; });
+
+    function updateSpectrumHighlight() {
+      if (!rtPositions) return;
+      const idx = rtPosition / 10;
+      const lo = Math.floor(idx);
+      const hi = Math.min(lo + 1, 10);
+      const t = idx - lo;
+
+      const steps = rtSpectrum.querySelectorAll('.sb-rt-step');
+
+      steps.forEach((el, i) => {
+        let weight = 0;
+        if (i === lo && i === hi) { weight = 1; }
+        else if (i === lo) { weight = 1 - t; }
+        else if (i === hi) { weight = t; }
+
+        el.style.opacity = weight > 0 ? String(0.8 + weight * 0.2) : '0.6';
+        el.style.background = weight > 0
+          ? `rgba(255,255,255,${(0.05 + weight * 0.15).toFixed(3)})`
+          : 'transparent';
+        el.style.boxShadow = weight > 0
+          ? `inset 0 0 ${Math.round(8 + weight * 18)}px rgba(29,185,84,${(weight * 0.35).toFixed(2)})`
+          : 'none';
+        el.style.borderColor = weight > 0
+          ? `rgba(29,185,84,${(0.2 + weight * 0.6).toFixed(2)})`
+          : 'transparent';
+      });
+
+      // Position the scrubber dot and fill
+      rtScrubberDot.style.left = `${rtPosition}%`;
+      rtScrubberFill.style.width = `${rtPosition}%`;
+
+      // Draw organic branch connections from scrubber dot to genre blocks
+      drawBranches(lo, hi, t);
+    }
+
+    function drawBranches(lo, hi, t) {
+      const svgRect = rtBranches.getBoundingClientRect();
+      const svgW = svgRect.width;
+      const svgH = svgRect.height;
+      if (svgW < 1 || svgH < 1) return;
+      rtBranches.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+
+      const steps = rtSpectrum.querySelectorAll('.sb-rt-step');
+      if (!steps.length) { rtBranches.innerHTML = ''; return; }
+
+      // Scrubber dot X (bottom of SVG)
+      const dotX = (rtPosition / 100) * svgW;
+      const botY = svgH;
+
+      // Anchor X = center of each step bar, relative to the SVG
+      function barCenterX(i) {
+        const step = steps[Math.min(i, steps.length - 1)];
+        const bar = step.querySelector('.sb-rt-step-bar') || step;
+        const r = bar.getBoundingClientRect();
+        return r.left + r.width / 2 - svgRect.left;
+      }
+
+      const paths = [];
+      const stroke = 2;
+      const opaFull = 0.45;
+      const opaEqual = 0.35;
+
+      if (lo === hi || t < 0.01) {
+        const tx = barCenterX(lo);
+        paths.push({ d: curve(dotX, botY, tx, 0), w: stroke, o: opaFull });
+      } else if (t > 0.99) {
+        const tx = barCenterX(hi);
+        paths.push({ d: curve(dotX, botY, tx, 0), w: stroke, o: opaFull });
+      } else {
+        // Two equal branches
+        const loX = barCenterX(lo);
+        const hiX = barCenterX(hi);
+        paths.push({ d: curve(dotX, botY, loX, 0), w: stroke, o: opaEqual });
+        paths.push({ d: curve(dotX, botY, hiX, 0), w: stroke, o: opaEqual });
+      }
+
+      while (rtBranches.firstChild) rtBranches.removeChild(rtBranches.firstChild);
+      for (const p of paths) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', p.d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', `rgba(255,255,255,${p.o})`);
+        path.setAttribute('stroke-width', p.w);
+        path.setAttribute('stroke-linecap', 'round');
+        rtBranches.appendChild(path);
+      }
+    }
+
+    function curve(x1, y1, x2, y2) {
+      const midY = y1 * 0.4;
+      return `M${x1},${y1} C${x1},${midY} ${x2},${y1 - midY} ${x2},${y2}`;
+    }
     let rtSliderDebounce = null;
 
     const PLAY_ICON = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -2869,68 +3103,58 @@
     // Mode toggle
     const genSubtitle = document.getElementById('sb-gen-subtitle');
     modeClipBtn.addEventListener('click', () => {
-      if (rtStreaming) return; // can't switch while streaming
+      if (rtStreaming) {
+        chrome.runtime.sendMessage({ type: 'realtime-stop' }).catch(() => {});
+        rtStreaming = false;
+        rtPaused = false;
+        rtPlayBtn.innerHTML = PLAY_ICON;
+        rtStopBtn.disabled = true;
+        rtRecBtn.disabled = true;
+        rtVisualizer.classList.remove('loading', 'active');
+        rtStatus.textContent = 'Ready';
+      }
       modeClipBtn.classList.add('active');
       modeRtBtn.classList.remove('active');
       clipPanel.style.display = '';
       rtPanel.style.display = 'none';
       genSubtitle.textContent = 'AI-generated music tailored to your taste';
     });
-    modeRtBtn.addEventListener('click', () => {
+    modeRtBtn.addEventListener('click', async () => {
       if (isGenerating) return; // can't switch while generating clip
       modeRtBtn.classList.add('active');
       modeClipBtn.classList.remove('active');
       clipPanel.style.display = 'none';
       rtPanel.style.display = '';
       genSubtitle.textContent = 'Steer AI-generated music in real time with the familiarity slider';
-    });
 
-    // Slider
-    rtSlider.addEventListener('input', () => {
-      const pos = parseInt(rtSlider.value);
-      rtSliderValue.textContent = pos;
-      updateSliderStyle(pos);
-
-      if (!rtStreaming) return;
-      clearTimeout(rtSliderDebounce);
-      rtSliderDebounce = setTimeout(() => {
-        chrome.runtime.sendMessage({ type: 'realtime-slider', position: pos });
-      }, 250);
-    });
-
-    function updateSliderStyle(pos) {
-      // Color the slider track based on position
-      const pct = pos / 100;
-      let color;
-      if (pos <= 50) {
-        const t = pos / 50;
-        // Red (anti) → Green (current)
-        const r = Math.round(lerp(220, 29, t));
-        const g = Math.round(lerp(50, 185, t));
-        const b = Math.round(lerp(50, 84, t));
-        color = `rgb(${r},${g},${b})`;
-      } else {
-        const t = (pos - 50) / 50;
-        // Green (current) → Blue (future)
-        const r = Math.round(lerp(29, 60, t));
-        const g = Math.round(lerp(185, 120, t));
-        const b = Math.round(lerp(84, 220, t));
-        color = `rgb(${r},${g},${b})`;
+      // Fetch spectrum data immediately (doesn't start a session)
+      if (!rtPositions) {
+        const resp = await chrome.runtime.sendMessage({ type: 'realtime-spectrum' });
+        if (resp?.positions) renderSpectrum(resp.positions);
       }
-      rtSlider.style.setProperty('--sb-rt-color', color);
-      rtSliderValue.style.color = color;
+    });
 
-      // Update params display
-      if (pos <= 10) rtParams.textContent = 'Genres you never listen to';
-      else if (pos <= 40) rtParams.textContent = 'Blending unfamiliar genres with your taste';
-      else if (pos <= 60) rtParams.textContent = 'Your current taste';
-      else if (pos <= 90) rtParams.textContent = 'Blending your taste with where it\'s heading';
-      else rtParams.textContent = 'Where your taste is heading next';
-    }
 
-    function lerp(a, b, t) { return a + (b - a) * t; }
+    // --- Piano key selector (single select — Lyria accepts one scale enum at a time) ---
+    const rtKeysContainer = document.getElementById('sb-rt-keys');
+    const rtPianoKeys = rtKeysContainer.querySelectorAll('.sb-piano-key');
+    let selectedScale = null; // null = SCALE_UNSPECIFIED (Lyria picks freely)
 
-    updateSliderStyle(50);
+    rtPianoKeys.forEach((key) => {
+      key.addEventListener('click', () => {
+        const scale = key.dataset.scale;
+        if (selectedScale === scale) {
+          selectedScale = null;
+          key.classList.remove('pressed');
+        } else {
+          rtPianoKeys.forEach((k) => k.classList.remove('pressed'));
+          selectedScale = scale;
+          key.classList.add('pressed');
+        }
+        chrome.runtime.sendMessage({ type: 'realtime-scale', scale: selectedScale });
+      });
+    });
+
 
     // Play/Pause
     rtPlayBtn.addEventListener('click', async () => {
@@ -2946,21 +3170,28 @@
         rtStatus.textContent = 'Connecting...';
         rtPlayBtn.innerHTML = PAUSE_ICON;
         rtStopBtn.disabled = false;
-        rtSlider.disabled = false;
-        rtVisualizer.classList.add('active');
+        rtRecBtn.disabled = false;
+        rtVisualizer.classList.remove('active');
+        rtVisualizer.classList.add('loading');
 
         const resp = await chrome.runtime.sendMessage({
           type: 'realtime-start',
           apiKey,
-          sliderPosition: parseInt(rtSlider.value),
+          sliderPosition: rtPosition,
         });
 
         if (resp?.error) {
           rtStatus.textContent = resp.error;
           rtPlayBtn.innerHTML = PLAY_ICON;
           rtStopBtn.disabled = true;
-          rtVisualizer.classList.remove('active');
+          rtRecBtn.disabled = true;
+          rtVisualizer.classList.remove('loading', 'active');
           return;
+        }
+
+        // Render the spectrum view with genre sets at each position
+        if (resp.positions) {
+          renderSpectrum(resp.positions);
         }
 
         rtStreaming = true;
@@ -2969,6 +3200,7 @@
         // Resume
         chrome.runtime.sendMessage({ type: 'realtime-play' });
         rtPlayBtn.innerHTML = PAUSE_ICON;
+        rtVisualizer.classList.remove('loading');
         rtVisualizer.classList.add('active');
         rtPaused = false;
       } else {
@@ -2981,14 +3213,115 @@
     });
 
     // Stop
-    rtStopBtn.addEventListener('click', () => {
+    rtStopBtn.addEventListener('click', async () => {
+      // If recording, stop recording first (triggers download)
+      if (rtRecording) await stopRecording();
       chrome.runtime.sendMessage({ type: 'realtime-stop' });
       rtStreaming = false;
       rtPaused = false;
       rtPlayBtn.innerHTML = PLAY_ICON;
       rtStopBtn.disabled = true;
-      rtVisualizer.classList.remove('active');
+      rtRecBtn.disabled = true;
+      rtVisualizer.classList.remove('loading', 'active');
       rtStatus.textContent = 'Ready';
+    });
+
+    // --- Recording ---
+    function formatRecTime(ms) {
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      return `${m}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    const REC_IDLE = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg><span class="sb-rt-rec-label">REC</span>';
+    const REC_RECORDING = (t) => `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg><span class="sb-rt-rec-timer">${t}</span><span class="sb-rt-rec-pause" title="Pause"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg></span><span class="sb-rt-rec-stop" title="Stop & save"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></span>`;
+    const REC_PAUSED_TMPL = (t) => `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg><span class="sb-rt-rec-timer">${t}</span><span class="sb-rt-rec-resume" title="Resume"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="sb-rt-rec-stop" title="Stop & save"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></span>`;
+
+    function recUpdateInner(time) {
+      rtRecBtn.innerHTML = rtRecPaused ? REC_PAUSED_TMPL(time) : REC_RECORDING(time);
+    }
+
+    function startRecTimer() {
+      rtRecStartTime = Date.now();
+      rtRecPausedDuration = 0;
+      recUpdateInner('0:00');
+      rtRecTimerInterval = setInterval(() => {
+        const elapsed = Date.now() - rtRecStartTime - rtRecPausedDuration;
+        const timerEl = rtRecBtn.querySelector('.sb-rt-rec-timer');
+        if (timerEl) timerEl.textContent = formatRecTime(elapsed);
+      }, 500);
+    }
+
+    function stopRecTimer() {
+      if (rtRecTimerInterval) { clearInterval(rtRecTimerInterval); rtRecTimerInterval = null; }
+    }
+
+    function currentRecTime() {
+      const elapsed = Date.now() - rtRecStartTime - rtRecPausedDuration;
+      return formatRecTime(elapsed);
+    }
+
+    async function stopRecording() {
+      rtRecording = false;
+      rtRecPaused = false;
+      stopRecTimer();
+      rtRecBtn.classList.remove('recording', 'rec-paused');
+      rtRecBtn.innerHTML = REC_IDLE;
+      rtRecBtn.title = 'Record';
+      // Service worker handles the download via chrome.downloads API
+      await chrome.runtime.sendMessage({ type: 'realtime-rec-stop' });
+    }
+
+    function resumeRecording() {
+      chrome.runtime.sendMessage({ type: 'realtime-rec-resume' });
+      rtRecPaused = false;
+      rtRecPausedDuration += Date.now() - rtRecPauseStart;
+      rtRecBtn.classList.remove('rec-paused');
+      rtRecBtn.classList.add('recording');
+      rtRecBtn.title = 'Pause recording';
+      rtRecTimerInterval = setInterval(() => {
+        const elapsed = Date.now() - rtRecStartTime - rtRecPausedDuration;
+        const timerEl = rtRecBtn.querySelector('.sb-rt-rec-timer');
+        if (timerEl) timerEl.textContent = formatRecTime(elapsed);
+      }, 500);
+      recUpdateInner(currentRecTime());
+    }
+
+    function pauseRecording() {
+      chrome.runtime.sendMessage({ type: 'realtime-rec-pause' });
+      rtRecPaused = true;
+      rtRecBtn.classList.remove('recording');
+      rtRecBtn.classList.add('rec-paused');
+      rtRecBtn.title = 'Paused';
+      rtRecPauseStart = Date.now();
+      if (rtRecTimerInterval) { clearInterval(rtRecTimerInterval); rtRecTimerInterval = null; }
+      recUpdateInner(currentRecTime());
+    }
+
+    rtRecBtn.addEventListener('click', async (e) => {
+      if (e.target.closest('.sb-rt-rec-stop')) {
+        await stopRecording();
+        return;
+      }
+      if (e.target.closest('.sb-rt-rec-resume')) {
+        resumeRecording();
+        return;
+      }
+      if (e.target.closest('.sb-rt-rec-pause')) {
+        pauseRecording();
+        return;
+      }
+
+      if (!rtRecording) {
+        // Start
+        chrome.runtime.sendMessage({ type: 'realtime-rec-start' });
+        rtRecording = true;
+        rtRecPaused = false;
+        rtRecBtn.classList.add('recording');
+        rtRecBtn.title = 'Recording';
+        startRecTimer();
+      }
     });
 
     // Listen for status updates from offscreen via service worker
@@ -2997,7 +3330,11 @@
       switch (msg.state) {
         case 'connecting': rtStatus.textContent = 'Connecting...'; break;
         case 'ready': rtStatus.textContent = 'Connected — starting...'; break;
-        case 'streaming': rtStatus.textContent = 'Streaming'; break;
+        case 'streaming':
+          rtStatus.textContent = 'Streaming';
+          rtVisualizer.classList.remove('loading');
+          rtVisualizer.classList.add('active');
+          break;
         case 'paused': rtStatus.textContent = 'Paused'; break;
         case 'stopped':
           rtStatus.textContent = 'Ready';
@@ -3005,7 +3342,9 @@
           rtPaused = false;
           rtPlayBtn.innerHTML = PLAY_ICON;
           rtStopBtn.disabled = true;
-          rtVisualizer.classList.remove('active');
+          rtRecBtn.disabled = true;
+          if (rtRecording) stopRecording();
+          rtVisualizer.classList.remove('loading', 'active');
           break;
         case 'disconnected':
           rtStatus.textContent = msg.detail || 'Disconnected';
@@ -3013,7 +3352,9 @@
           rtPaused = false;
           rtPlayBtn.innerHTML = PLAY_ICON;
           rtStopBtn.disabled = true;
-          rtVisualizer.classList.remove('active');
+          rtRecBtn.disabled = true;
+          if (rtRecording) stopRecording();
+          rtVisualizer.classList.remove('loading', 'active');
           break;
         case 'error':
           rtStatus.textContent = msg.detail || 'Error';
