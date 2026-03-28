@@ -293,8 +293,16 @@ export const SPOTIFY_TOOLS = [
   },
   {
     name: 'get_playlists',
-    description: 'Get all of the user\'s playlists with their full track listings.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get the user\'s playlists. Without a name filter, returns a lightweight list (name, id, track count — no tracks). With a name filter, returns the matching playlist with full track listings. If the user mentions a playlist by name, ALWAYS pass the name directly to get its tracks in one call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Filter by playlist name (case-insensitive substring match). Only matching playlists are returned, with full track listings.',
+        },
+      },
+    },
   },
   {
     name: 'get_library_stats',

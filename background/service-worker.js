@@ -362,44 +362,108 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               'get_track_credits',
             ]);
             const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) => !PLAYBACK_TOOLS.has(t.name));
-            const messages = [
+
+            // Two-phase approach:
+            // Phase 1: One LLM call to decide which tools to call (returns tool calls)
+            // Phase 2: Execute all tools, compact results, one final LLM call to produce the prompt
+            // This is exactly 2 LLM calls max, no ballooning context.
+
+            const planMessages = [
               { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
               { role: 'user', content: userIntent?.trim() || 'Generate a track that reflects my overall taste.' },
             ];
 
-            const MAX_ROUNDS = 5;
-            for (let round = 0; round < MAX_ROUNDS; round++) {
-              const response = await llmAdapter.sendMessage({
+            // Phase 1: Ask LLM what data it needs
+            const planResponse = await llmAdapter.sendMessage({
+              model: llmModel,
+              maxTokens: 600,
+              temperature: 0.3,
+              messages: planMessages,
+              tools: MUSIC_TOOLS,
+            }, llmApiKey);
+
+            if (planResponse.finishReason === 'tool_use' && planResponse.toolCalls?.length) {
+              // Execute all requested tools and compact the results
+              const collectedData = [];
+              for (const tc of planResponse.toolCalls) {
+                let result = await executeTool(tc.name, tc.input);
+                console.log(`[Spotify Brainer] Tool ${tc.name}(${JSON.stringify(tc.input)}) →`, result);
+
+                // Auto-resolve: if get_playlists returned no exact match, pick the closest one
+                if (tc.name === 'get_playlists' && result.noExactMatch && result.data?.length) {
+                  const query = (tc.input.name || '').toLowerCase();
+                  const best = result.data.reduce((a, b) => {
+                    const aScore = a.name.toLowerCase().includes(query) ? 1 : 0;
+                    const bScore = b.name.toLowerCase().includes(query) ? 1 : 0;
+                    return bScore > aScore ? b : a;
+                  }, result.data[0]);
+                  console.log(`[Spotify Brainer] Auto-resolving playlist "${tc.input.name}" → "${best.name}"`);
+                  result = await executeTool('get_playlists', { name: best.name });
+                }
+
+                // Auto-enrich: fetch Last.fm tags for any tracks in the result
+                const lastfmKey = await getLastFmApiKey();
+                if (lastfmKey && result.success && result.data) {
+                  // Collect tracks from any shape: flat array, .tracks, .topTracks
+                  const d = result.data;
+                  let allTracks = [];
+                  if (Array.isArray(d) && d.length && d[0]?.name) {
+                    // Flat array of tracks (get_recently_played, get_top_tracks)
+                    allTracks = d;
+                  } else {
+                    // Objects with .tracks or .topTracks (playlists, history)
+                    const items = Array.isArray(d) ? d : [d];
+                    for (const item of items) {
+                      if (item.tracks?.length) allTracks.push(...item.tracks);
+                      if (item.topTracks?.length) allTracks.push(...item.topTracks);
+                    }
+                  }
+
+                  if (allTracks.length) {
+                    const artistNames = new Set();
+                    const trackPairs = [];
+                    for (const t of allTracks) {
+                      const name = t.name;
+                      const artists = t.artists || [];
+                      const artistStr = typeof artists[0] === 'string' ? artists[0] : artists[0]?.name;
+                      if (artistStr) {
+                        artistNames.add(artistStr);
+                        trackPairs.push({ name: `${name} \u2014 ${artistStr}` });
+                      }
+                    }
+                    const artistObjs = [...artistNames].map((n) => ({ name: n }));
+                    await enrichArtistsWithTags(artistObjs, lastfmKey);
+                    await enrichTracksWithTags(trackPairs, lastfmKey);
+                    const tags = aggregateTopTags([...artistObjs, ...trackPairs]);
+                    if (tags.length) {
+                      result._lastfmTags = tags.map((t) => t.name);
+                      console.log(`[Spotify Brainer] Auto-enriched Last.fm tags (${artistObjs.length} artists, ${trackPairs.length} tracks):`, result._lastfmTags);
+                    }
+                  }
+                }
+
+                collectedData.push(compactToolResult(tc.name, tc.input, result));
+              }
+
+              // Phase 2: Single final call with compacted data — produce the prompt
+              const finalMessages = [
+                { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
+                { role: 'user', content: `${userIntent?.trim() || 'Generate a track that reflects my overall taste.'}\n\nHere is the data I gathered:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
+              ];
+
+              const finalResponse = await llmAdapter.sendMessage({
                 model: llmModel,
                 maxTokens: 600,
                 temperature: 0.3,
-                messages,
-                tools: MUSIC_TOOLS,
+                messages: finalMessages,
               }, llmApiKey);
 
-              if (response.finishReason === 'tool_use' && response.toolCalls?.length) {
-                // Build assistant turn
-                const assistantContent = [];
-                if (response.content) assistantContent.push({ type: 'text', text: response.content });
-                for (const tc of response.toolCalls) {
-                  assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
-                }
-                messages.push({ role: 'assistant', content: assistantContent });
-
-                // Execute tools and return results
-                const toolResults = [];
-                for (const tc of response.toolCalls) {
-                  const result = await executeTool(tc.name, tc.input);
-                  console.log(`[Spotify Brainer] Tool ${tc.name}(${JSON.stringify(tc.input)}) →`, result);
-                  toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: JSON.stringify(result) });
-                }
-                messages.push({ role: 'user', content: toolResults });
-              } else {
-                // LLM finished — parse JSON output as Lyria prompt
-                const jsonMatch = response.content?.trim().match(/\{[\s\S]*\}/);
-                if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
-                break;
-              }
+              const jsonMatch = finalResponse.content?.trim().match(/\{[\s\S]*\}/);
+              if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
+            } else {
+              // LLM produced the prompt directly (no tools needed)
+              const jsonMatch = planResponse.content?.trim().match(/\{[\s\S]*\}/);
+              if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
             }
           } catch (e) {
             console.warn('[Spotify Brainer] Music agent failed, using fallback:', e.message);
@@ -451,6 +515,80 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // intelligence and historyMetrics are computed directly in this worker
 });
 
+// --- Compact tool results for music gen context ---
+// Summarizes tool output to avoid blowing up the LLM context window.
+function compactToolResult(toolName, input, result) {
+  if (!result?.success) return `${toolName}: ${result?.error || 'failed'}`;
+
+  const d = result.data;
+  switch (toolName) {
+    case 'get_playlists': {
+      if (result.noExactMatch) {
+        const names = d.map((p) => p.name).join(', ');
+        return `get_playlists("${input.name}"): no exact match. Available: ${names}`;
+      }
+      if (!input.name) {
+        const names = d.map((p) => `${p.name} (${p.total} tracks)`).join(', ');
+        return `get_playlists: ${d.length} playlists — ${names}`;
+      }
+      // Filtered with tracks — summarize tracks compactly
+      const tagLine = result._lastfmTags?.length ? `\nLast.fm tags: ${result._lastfmTags.join(', ')}` : '';
+      return d.map((pl) => {
+        const tracks = pl.tracks?.slice(0, 20).map((t) =>
+          `${t.name} by ${t.artists?.join(', ') || '?'}`
+        ).join('; ') || 'no tracks';
+        const more = (pl.tracks?.length || 0) > 20 ? ` (+${pl.tracks.length - 20} more)` : '';
+        return `get_playlists("${pl.name}"): ${pl.total} tracks — ${tracks}${more}`;
+      }).join('\n') + tagLine;
+    }
+    case 'get_top_artists':
+    case 'get_history_artists': {
+      const artists = (Array.isArray(d) ? d : d.topArtists || []).slice(0, 10);
+      const list = artists.map((a) => {
+        const tags = a.lastfmTags?.map((t) => typeof t === 'string' ? t : t.name).join(', ');
+        return `${a.name}${tags ? ` [${tags}]` : ''}`;
+      }).join('; ');
+      return `${toolName}: ${list}`;
+    }
+    case 'get_top_tracks':
+    case 'get_recently_played': {
+      const items = (Array.isArray(d) ? d : []);
+      const list = items.map((t) => `${t.name} by ${t.artists?.join(', ') || '?'}`).join('; ');
+      const tagLine = result._lastfmTags?.length ? `\nLast.fm tags: ${result._lastfmTags.join(', ')}` : '';
+      return `${toolName}: ${list}${tagLine}`;
+    }
+    case 'get_history_taste': {
+      const artists = (d.topArtists || []).slice(0, 8).map((a) => {
+        const tags = a.lastfmTags?.map((t) => typeof t === 'string' ? t : t.name).join(', ');
+        return `${a.name} (${a.plays} plays)${tags ? ` [${tags}]` : ''}`;
+      }).join('; ');
+      const tracks = (d.topTracks || []).slice(0, 5).map((t) => {
+        const tags = t.lastfmTags?.map((tg) => typeof tg === 'string' ? tg : tg.name).join(', ');
+        return `${t.name} (${t.plays}x)${tags ? ` [${tags}]` : ''}`;
+      }).join('; ');
+      const tags = d.lastfmTags?.join(', ') || '';
+      return `get_history_taste(${d.period?.from || ''}–${d.period?.to || ''}): ${d.totalPlays} plays, ${d.totalHours}h\nArtists: ${artists}\nTracks: ${tracks}${tags ? `\nAggregated tags: ${tags}` : ''}`;
+    }
+    case 'get_lastfm_tags': {
+      const parts = [];
+      for (const [name, tags] of Object.entries(d.artistTags || {})) {
+        parts.push(`${name}: [${tags.join(', ')}]`);
+      }
+      for (const [name, tags] of Object.entries(d.trackTags || {})) {
+        parts.push(`${name}: [${tags.join(', ')}]`);
+      }
+      const agg = d.aggregatedTags?.join(', ') || '';
+      return `get_lastfm_tags:\n${parts.join('\n')}${agg ? `\nAggregated: ${agg}` : ''}`;
+    }
+    case 'get_taste_profile':
+      return `get_taste_profile: ${JSON.stringify(d).slice(0, 500)}`;
+    default:
+      // Generic fallback — truncate to keep it small
+      const json = JSON.stringify(d);
+      return `${toolName}: ${json.length > 300 ? json.slice(0, 300) + '...' : json}`;
+  }
+}
+
 // --- Execute a tool call against Spotify ---
 async function executeTool(toolName, input) {
   // Special tool: get_track_credits — scrapes Spotify's credits dialog from the DOM
@@ -489,11 +627,32 @@ async function executeTool(toolName, input) {
     },
     get_playlists: () => {
       if (!spotifyData.playlists?.length) return { error: 'No playlists loaded. Ask the user to refresh.' };
+      if (input.name) {
+        // Exact match (case-insensitive) — return with full tracks
+        const query = input.name.toLowerCase();
+        const exact = spotifyData.playlists.filter((pl) => pl.name?.toLowerCase() === query);
+        if (exact.length) {
+          return {
+            success: true,
+            data: exact.map((pl) => ({
+              name: pl.name, id: pl.id, total: pl.tracks?.total || 0,
+              tracks: pl.trackItems?.map((t) => ({ name: t.name, id: t.id, artists: t.artists?.map((a) => a.name) })) || [],
+            })),
+          };
+        }
+        // No exact match — return lightweight list so the LLM can pick the right one
+        return {
+          success: true,
+          noExactMatch: true,
+          hint: `No playlist exactly named "${input.name}". Here are all playlists — call again with the exact name.`,
+          data: spotifyData.playlists.map((pl) => ({ name: pl.name, id: pl.id, total: pl.tracks?.total || 0 })),
+        };
+      }
+      // Unfiltered: lightweight list — no tracks
       return {
         success: true,
-        data: spotifyData.playlists.map(pl => ({
+        data: spotifyData.playlists.map((pl) => ({
           name: pl.name, id: pl.id, total: pl.tracks?.total || 0,
-          tracks: pl.trackItems?.map(t => ({ name: t.name, id: t.id, artists: t.artists?.map(a => a.name) })) || [],
         })),
       };
     },
