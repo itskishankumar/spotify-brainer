@@ -18,6 +18,9 @@
     copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
     export: '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+    generate: '<svg viewBox="0 0 24 24"><path d="M19 3l-1.5 3-1.5-3-3-1.5 3-1.5L19 0l1.5 3 3 1.5-3 1.5zM12 7.5l-2 4-4 2 4 2 2 4 2-4 4-2-4-2-2-4zm-7 9l-1 2-2 1 2 1 1 2 1-2 2-1-2-1-1-2z"/></svg>',
+    play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
   };
 
   // --- Create toggle button ---
@@ -41,6 +44,7 @@
         <button class="sb-header-btn" id="sb-btn-new" title="New Chat">${ICONS.newChat}</button>
         <button class="sb-header-btn" id="sb-btn-history" title="Chats">${ICONS.chat}</button>
         <button class="sb-header-btn" id="sb-btn-data" title="Data Viewer">${ICONS.data}</button>
+        <button class="sb-header-btn" id="sb-btn-generate" title="Generate Music">${ICONS.generate}</button>
         <button class="sb-header-btn" id="sb-btn-settings" title="Settings">${ICONS.settings}</button>
       </div>
     </div>
@@ -120,6 +124,31 @@
       </div>
 
       <div class="sb-settings-section">
+        <div class="sb-settings-section-title">Music Generation</div>
+        <div class="sb-settings-group">
+          <label>Provider</label>
+          <select id="sb-music-provider-select">
+            <option value="lyria">Lyria (Google AI)</option>
+          </select>
+        </div>
+        <div class="sb-settings-group">
+          <label>Model</label>
+          <select id="sb-music-model-select"></select>
+        </div>
+        <div class="sb-settings-group">
+          <label>API Key</label>
+          <input type="password" id="sb-music-api-key" placeholder="Enter your API key" />
+          <span class="sb-settings-hint">
+            Get your key at <a href="#" id="sb-music-key-link" target="_blank" style="color:#1DB954">provider site</a>
+          </span>
+        </div>
+        <div class="sb-test-row">
+          <button class="sb-test-btn" id="sb-test-music-gen">Test Connection</button>
+          <span class="sb-test-status" id="sb-test-music-gen-status"></span>
+        </div>
+      </div>
+
+      <div class="sb-settings-section">
         <div class="sb-settings-section-title">Data Import</div>
         <div class="sb-settings-group">
           <label>Streaming History Import</label>
@@ -149,6 +178,69 @@
       </div>
       <div class="sb-data-content" id="sb-data-content">
         <div class="sb-data-empty">No data loaded yet. Click Refresh to load.</div>
+      </div>
+    </div>
+
+    <!-- Generate panel -->
+    <div class="sb-generate" id="sb-generate">
+      <div class="sb-generate-inner">
+        <div class="sb-generate-hero">
+          <div class="sb-generate-icon">${ICONS.generate}</div>
+          <h2>Generate Music</h2>
+          <p>AI-generated 30-second clip tailored to your taste</p>
+        </div>
+
+        <div class="sb-generate-prompt-wrap">
+          <label class="sb-generate-label">Describe what you want <span style="color:#535353">(optional)</span></label>
+          <textarea id="sb-gen-prompt" class="sb-gen-textarea" placeholder="e.g. chill lo-fi with rain sounds, or leave blank to let AI decide based on your taste"></textarea>
+        </div>
+
+        <button id="sb-gen-btn" class="sb-gen-btn">
+          <span class="sb-gen-btn-icon">${ICONS.generate}</span>
+          <span id="sb-gen-btn-label">Generate</span>
+        </button>
+
+        <div id="sb-gen-status" class="sb-gen-status" style="display:none"></div>
+
+        <!-- Audio player -->
+        <div id="sb-gen-player" class="sb-gen-player" style="display:none">
+          <div id="sb-gen-track-name" class="sb-gen-track-name"></div>
+          <div class="sb-gen-waveform" id="sb-gen-waveform">
+            ${Array.from({length: 40}, (_, i) => `<div class="sb-gen-bar" style="animation-delay:${(i * 0.05).toFixed(2)}s"></div>`).join('')}
+          </div>
+          <div class="sb-gen-controls">
+            <button id="sb-gen-play-btn" class="sb-gen-play-btn">${ICONS.play}</button>
+            <div class="sb-gen-scrubber-wrap">
+              <div class="sb-gen-scrubber" id="sb-gen-scrubber">
+                <div class="sb-gen-scrubber-fill" id="sb-gen-scrubber-fill"></div>
+                <div class="sb-gen-scrubber-thumb" id="sb-gen-scrubber-thumb"></div>
+              </div>
+              <div class="sb-gen-time-row">
+                <span id="sb-gen-time-cur">0:00</span>
+                <span id="sb-gen-time-total">0:30</span>
+              </div>
+            </div>
+          </div>
+          <div class="sb-gen-save-row" id="sb-gen-save-row" style="display:none">
+            <input id="sb-gen-name-input" class="sb-gen-name-input" type="text" placeholder="Name this clip..." maxlength="60" />
+            <div class="sb-gen-save-btns">
+              <button id="sb-gen-save-btn" class="sb-gen-save-btn">Save</button>
+              <button id="sb-gen-discard-btn" class="sb-gen-discard-btn">Discard</button>
+            </div>
+          </div>
+          <div class="sb-gen-prompt-preview">
+            <details>
+              <summary>View prompt used</summary>
+              <p id="sb-gen-prompt-used"></p>
+            </details>
+          </div>
+        </div>
+
+        <!-- Saved songs library -->
+        <div class="sb-gen-library" id="sb-gen-library" style="display:none">
+          <div class="sb-gen-library-header">Saved Clips</div>
+          <div id="sb-gen-library-list"></div>
+        </div>
       </div>
     </div>
 
@@ -243,8 +335,9 @@
   });
 
   // --- Panel switching (chat / settings / data viewer) ---
-  let activePanel = 'chat'; // 'chat' | 'settings' | 'data'
+  let activePanel = 'chat'; // 'chat' | 'settings' | 'data' | 'generate'
   const dataViewerEl = document.getElementById('sb-data-viewer');
+  const generateEl = document.getElementById('sb-generate');
   const dataContentEl = document.getElementById('sb-data-content');
 
   // Heatmap tooltip (floating, follows cursor)
@@ -289,6 +382,7 @@
     tokenCounter.style.display = name === 'chat' ? 'block' : 'none';
     settingsEl.classList.toggle('open', name === 'settings');
     dataViewerEl.classList.toggle('open', name === 'data');
+    generateEl.classList.toggle('open', name === 'generate');
     // Close chats dropdown when switching panels
     showingConvList = false;
     convListEl.classList.remove('open');
@@ -299,6 +393,7 @@
     const activeBtn = {
       settings: 'sb-btn-settings',
       data: 'sb-btn-data',
+      generate: 'sb-btn-generate',
     }[name];
     if (activeBtn) document.getElementById(activeBtn)?.classList.add('active');
   }
@@ -309,6 +404,10 @@
 
   document.getElementById('sb-btn-data').addEventListener('click', () => {
     showPanel(activePanel === 'data' ? 'chat' : 'data');
+  });
+
+  document.getElementById('sb-btn-generate').addEventListener('click', () => {
+    showPanel(activePanel === 'generate' ? 'chat' : 'generate');
   });
 
   // --- Data viewer tabs ---
@@ -825,6 +924,91 @@
 
   apiKeyInput.addEventListener('change', () => {
     chrome.storage.local.set({ [`sb_apiKey_${providerSelect.value}`]: apiKeyInput.value });
+  });
+
+  // --- Music generation provider settings ---
+  const MUSIC_GEN_PROVIDERS = {
+    lyria: {
+      displayName: 'Lyria (Google AI)',
+      apiKeyUrl: 'https://aistudio.google.com/apikey',
+      keyPlaceholder: 'AIza...',
+      models: [
+        { id: 'lyria-3-clip-preview', name: 'Lyria 3 Clip (30s)' },
+        { id: 'lyria-3-pro-preview', name: 'Lyria 3 Pro (~2 min)' },
+      ],
+    },
+  };
+
+  const musicProviderSelect = document.getElementById('sb-music-provider-select');
+  const musicModelSelect = document.getElementById('sb-music-model-select');
+  const musicApiKeyInput = document.getElementById('sb-music-api-key');
+  const musicKeyLink = document.getElementById('sb-music-key-link');
+
+  function updateMusicModelSelect() {
+    const provider = musicProviderSelect.value;
+    const config = MUSIC_GEN_PROVIDERS[provider];
+    if (!config) return;
+    musicModelSelect.innerHTML = config.models
+      .map((m) => `<option value="${m.id}">${m.name}</option>`)
+      .join('');
+    musicApiKeyInput.placeholder = config.keyPlaceholder || 'Enter your API key';
+    musicKeyLink.href = config.apiKeyUrl;
+    chrome.storage.local.get(`sb_music_key_${provider}`, (data) => {
+      musicApiKeyInput.value = data[`sb_music_key_${provider}`] || '';
+    });
+    chrome.storage.local.get(`sb_music_model_${provider}`, (data) => {
+      if (data[`sb_music_model_${provider}`]) musicModelSelect.value = data[`sb_music_model_${provider}`];
+    });
+  }
+
+  musicProviderSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ sb_music_provider: musicProviderSelect.value });
+    updateMusicModelSelect();
+  });
+
+  musicModelSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_music_model_${musicProviderSelect.value}`]: musicModelSelect.value });
+  });
+
+  musicApiKeyInput.addEventListener('change', () => {
+    chrome.storage.local.set({ [`sb_music_key_${musicProviderSelect.value}`]: musicApiKeyInput.value });
+  });
+
+  // Load music gen provider on init
+  chrome.storage.local.get('sb_music_provider', (data) => {
+    if (data.sb_music_provider) musicProviderSelect.value = data.sb_music_provider;
+    updateMusicModelSelect();
+  });
+
+  document.getElementById('sb-test-music-gen').addEventListener('click', async () => {
+    const btn = document.getElementById('sb-test-music-gen');
+    const status = document.getElementById('sb-test-music-gen-status');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    status.textContent = '';
+    status.className = 'sb-test-status';
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'music-test',
+        provider: musicProviderSelect.value,
+        apiKey: musicApiKeyInput.value,
+      });
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      if (result.valid) {
+        status.textContent = 'Connected';
+        status.className = 'sb-test-status sb-test-success';
+      } else {
+        status.textContent = result.error || 'Failed';
+        status.className = 'sb-test-status sb-test-error';
+      }
+    } catch (e) {
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      status.textContent = e.message;
+      status.className = 'sb-test-status sb-test-error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'sb-test-status'; }, 10000);
   });
 
   // --- Test connection ---
@@ -1763,6 +1947,234 @@
     }
     e.target.value = '';
   });
+
+  // --- Generate panel ---
+  (function initGeneratePanel() {
+    const genPromptInput = document.getElementById('sb-gen-prompt');
+    const genBtn = document.getElementById('sb-gen-btn');
+    const genBtnLabel = document.getElementById('sb-gen-btn-label');
+    const genStatus = document.getElementById('sb-gen-status');
+    const genPlayer = document.getElementById('sb-gen-player');
+    const genPlayBtn = document.getElementById('sb-gen-play-btn');
+    const genScrubber = document.getElementById('sb-gen-scrubber');
+    const genScrubberFill = document.getElementById('sb-gen-scrubber-fill');
+    const genScrubberThumb = document.getElementById('sb-gen-scrubber-thumb');
+    const genTimeCur = document.getElementById('sb-gen-time-cur');
+    const genTimeTotal = document.getElementById('sb-gen-time-total');
+    const genPromptUsed = document.getElementById('sb-gen-prompt-used');
+    const genWaveform = document.getElementById('sb-gen-waveform');
+    const genTrackName = document.getElementById('sb-gen-track-name');
+    const genSaveRow = document.getElementById('sb-gen-save-row');
+    const genNameInput = document.getElementById('sb-gen-name-input');
+    const genSaveBtn = document.getElementById('sb-gen-save-btn');
+    const genDiscardBtn = document.getElementById('sb-gen-discard-btn');
+    const genLibrary = document.getElementById('sb-gen-library');
+    const genLibraryList = document.getElementById('sb-gen-library-list');
+
+    let audio = null;
+    let isGenerating = false;
+    let pendingSong = null;   // generated but not yet saved
+    let savedSongs = [];      // persisted songs: [{id, audio, mimeType, prompt, userPrompt, generatedAt}]
+
+    const SONGS_KEY = 'sb_gen_songs';
+    const MAX_SONGS = 8;
+
+    // Load saved songs from storage
+    chrome.storage.local.get(SONGS_KEY, (data) => {
+      savedSongs = data[SONGS_KEY] || [];
+      renderLibrary();
+    });
+
+    function persistSongs() {
+      chrome.storage.local.set({ [SONGS_KEY]: savedSongs });
+    }
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+    }
+
+    function formatDate(ts) {
+      const d = new Date(ts);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+        ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function setStatus(msg, isError = false) {
+      genStatus.textContent = msg;
+      genStatus.style.display = msg ? 'block' : 'none';
+      genStatus.style.color = isError ? '#f15e6c' : '#b3b3b3';
+    }
+
+    function loadAudio(base64, mimeType) {
+      if (audio) { audio.pause(); audio = null; }
+      audio = new Audio(`data:${mimeType || 'audio/mp3'};base64,${base64}`);
+
+      audio.addEventListener('loadedmetadata', () => {
+        genTimeTotal.textContent = formatTime(isFinite(audio.duration) ? audio.duration : 30);
+      });
+      audio.addEventListener('timeupdate', () => {
+        const dur = audio.duration || 30;
+        const pct = (audio.currentTime / dur) * 100;
+        genScrubberFill.style.width = pct + '%';
+        genScrubberThumb.style.left = pct + '%';
+        genTimeCur.textContent = formatTime(audio.currentTime);
+      });
+      audio.addEventListener('ended', () => {
+        genPlayBtn.innerHTML = ICONS.play;
+        genWaveform.classList.remove('playing');
+        genScrubberFill.style.width = '0%';
+        genScrubberThumb.style.left = '0%';
+        genTimeCur.textContent = '0:00';
+        audio.currentTime = 0;
+      });
+    }
+
+    function showPlayer(song, showSaveActions) {
+      loadAudio(song.audio, song.mimeType);
+      genPromptUsed.textContent = song.prompt || '';
+      genTrackName.textContent = song.name || song.userPrompt || 'Generated clip';
+      genPlayer.style.display = 'flex';
+      genSaveRow.style.display = showSaveActions ? 'block' : 'none';
+      if (showSaveActions) {
+        genNameInput.value = song.userPrompt || '';
+        setTimeout(() => genNameInput.focus(), 50);
+      }
+      setStatus('');
+    }
+
+    function renderLibrary() {
+      if (!savedSongs.length) {
+        genLibrary.style.display = 'none';
+        return;
+      }
+      genLibrary.style.display = 'block';
+      genLibraryList.innerHTML = savedSongs.map((song, idx) => `
+        <div class="sb-gen-lib-item" data-idx="${idx}">
+          <button class="sb-gen-lib-play" data-idx="${idx}" title="Play">${ICONS.play}</button>
+          <div class="sb-gen-lib-info">
+            <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userPrompt || 'Untitled')}</div>
+            <div class="sb-gen-lib-date">${formatDate(song.generatedAt)}</div>
+          </div>
+          <button class="sb-gen-lib-delete" data-idx="${idx}" title="Delete">${ICONS.trash}</button>
+        </div>
+      `).join('');
+
+      genLibraryList.querySelectorAll('.sb-gen-lib-play').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const song = savedSongs[parseInt(btn.dataset.idx)];
+          if (!song) return;
+          showPlayer(song, false);
+          audio.play().then(() => {
+            genPlayBtn.innerHTML = ICONS.pause;
+            genWaveform.classList.add('playing');
+          }).catch(() => {});
+        });
+      });
+
+      genLibraryList.querySelectorAll('.sb-gen-lib-delete').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          savedSongs.splice(idx, 1);
+          persistSongs();
+          renderLibrary();
+        });
+      });
+    }
+
+    genSaveBtn.addEventListener('click', () => {
+      if (!pendingSong) return;
+      pendingSong.name = genNameInput.value.trim() || pendingSong.userPrompt || 'Untitled';
+      if (savedSongs.length >= MAX_SONGS) savedSongs.pop(); // drop oldest
+      savedSongs.unshift(pendingSong);
+      persistSongs();
+      pendingSong = null;
+      genSaveRow.style.display = 'none';
+      renderLibrary();
+    });
+
+    genDiscardBtn.addEventListener('click', () => {
+      pendingSong = null;
+      genSaveRow.style.display = 'none';
+      genPlayer.style.display = 'none';
+      if (audio) { audio.pause(); audio = null; }
+    });
+
+    genPlayBtn.addEventListener('click', () => {
+      if (!audio) return;
+      if (audio.paused) {
+        audio.play();
+        genPlayBtn.innerHTML = ICONS.pause;
+        genWaveform.classList.add('playing');
+      } else {
+        audio.pause();
+        genPlayBtn.innerHTML = ICONS.play;
+        genWaveform.classList.remove('playing');
+      }
+    });
+
+    let scrubbing = false;
+    function scrubTo(e) {
+      if (!audio) return;
+      const rect = genScrubber.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      audio.currentTime = pct * (audio.duration || 30);
+    }
+    genScrubber.addEventListener('mousedown', (e) => { scrubbing = true; scrubTo(e); });
+    document.addEventListener('mousemove', (e) => { if (scrubbing) scrubTo(e); });
+    document.addEventListener('mouseup', () => { scrubbing = false; });
+
+    genBtn.addEventListener('click', async () => {
+      if (isGenerating) return;
+
+      const provider = (await chrome.storage.local.get('sb_music_provider')).sb_music_provider || 'lyria';
+      const apiKey = (await chrome.storage.local.get(`sb_music_key_${provider}`))[`sb_music_key_${provider}`];
+      const model = (await chrome.storage.local.get(`sb_music_model_${provider}`))[`sb_music_model_${provider}`] || 'lyria-3-clip-preview';
+
+      if (!apiKey) {
+        setStatus('Add your API key in Settings → Music Generation', true);
+        return;
+      }
+
+      isGenerating = true;
+      genBtn.disabled = true;
+      genBtnLabel.textContent = 'Generating...';
+      genPlayer.style.display = 'none';
+      genSaveRow.style.display = 'none';
+      setStatus('Composing your track… this takes ~15s');
+
+      try {
+        const userPrompt = genPromptInput.value.trim();
+        const resp = await chrome.runtime.sendMessage({
+          type: 'music-generate',
+          provider,
+          model,
+          userPrompt,
+          apiKey,
+        });
+
+        if (resp.error) {
+          setStatus(resp.error, true);
+        } else {
+          pendingSong = {
+            id: Date.now(),
+            audio: resp.audio,
+            mimeType: resp.mimeType,
+            prompt: resp.prompt,
+            userPrompt,
+            generatedAt: Date.now(),
+          };
+          showPlayer(pendingSong, true);
+        }
+      } catch (e) {
+        setStatus(e.message || 'Generation failed', true);
+      } finally {
+        isGenerating = false;
+        genBtn.disabled = false;
+        genBtnLabel.textContent = 'Generate';
+      }
+    });
+  })();
 
   // --- Init ---
   loadState();

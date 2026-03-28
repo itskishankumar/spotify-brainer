@@ -2,7 +2,7 @@
 
 AI powered brain for Spotify.
 
-A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and makes it all available to an LLM via on-demand tool calls — so it genuinely understands your music identity and can control your playback.
+A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and makes it all available to an LLM via on-demand tool calls — so it genuinely understands your music identity and can control your playback. It can also generate original music clips tailored to your taste.
 
 ## Features
 
@@ -17,6 +17,7 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
+- **AI music generation** — generates original 30-second clips tailored to your taste profile using Lyria (Google AI); save and replay clips with a built-in audio player
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
@@ -67,6 +68,14 @@ For history analysis, import your streaming history JSON files from your Spotify
 
 Re-importing clears previous history. Use the **Clear History** button to wipe data manually.
 
+### 5. Generate music (optional)
+
+1. In Settings → Music Generation, select a provider and model
+2. Enter your API key (for Lyria, get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+3. Click the sparkle icon (✦) in the header to open the Generate tab
+4. Optionally describe what you want, then click **Generate**
+5. Save clips you like — they're stored locally and accessible from the library
+
 ## Architecture
 
 ```
@@ -77,7 +86,7 @@ spotify-brainer/
 │   ├── inject.css             # Sidebar + layout styles
 │   └── spotify-scraper.js     # DOM scraping (now playing, current view, track credits)
 ├── background/
-│   └── service-worker.js      # API proxy, data pipeline, context builder
+│   └── service-worker.js      # API proxy, data pipeline, prompt builder, music gen
 ├── llm/
 │   ├── types.js               # Unified LLMRequest/LLMResponse/LLMChunk
 │   ├── adapter.js             # Base adapter interface
@@ -87,6 +96,11 @@ spotify-brainer/
 │   │   ├── openai.js          # OpenAI adapter
 │   │   └── gemini.js          # Gemini adapter
 │   └── registry.js            # Provider registry
+├── music-gen/
+│   ├── types.js               # Unified MusicGenRequest/MusicGenResponse
+│   ├── adapter.js             # Base adapter interface
+│   └── adapters/
+│       └── lyria.js           # Lyria (Google AI) adapter
 ├── lib/
 │   ├── spotify-auth.js        # OAuth PKCE authentication
 │   ├── spotify-controls.js    # Playback, search, playlist, library controls
@@ -123,7 +137,17 @@ GDPR Import  ──→  IndexedDB ──┤
               spotify-controls  data-fetch tools ──→ in-memory data─┘
            (play, search, etc.)  (profile, history,
                                   top tracks, etc.)
+
+buildMusicPrompt() ──→  MusicGenAdapter  ──→  Generated audio (base64)
+  (taste signals)      Lyria / ...            stored in chrome.storage.local
 ```
+
+## Adding a Music Generation Provider
+
+1. Create `music-gen/adapters/yourprovider.js` extending `MusicGenAdapter`
+2. Implement `validate(apiKey)` and `generate(request, apiKey)`
+3. Add it to `MUSIC_GEN_ADAPTERS` in `background/service-worker.js`
+4. Add an `<option>` and config entry to the Music Generation settings in `content/inject.js`
 
 ## Spotify API Notes
 

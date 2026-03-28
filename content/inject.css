@@ -1198,3 +1198,474 @@ body.spotify-brainer-open {
   font-size: 13px;
   color: #b3b3b3;
 }
+
+/* ============================================================
+   Generate panel
+   ============================================================ */
+
+.sb-generate {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  background: #121212;
+}
+
+.sb-generate.open {
+  display: flex;
+}
+
+.sb-generate-inner {
+  padding: 24px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sb-generate-hero {
+  text-align: center;
+  padding: 12px 0 4px;
+}
+
+.sb-generate-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  background: rgba(29, 185, 84, 0.12);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-generate-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: #1DB954;
+}
+
+.sb-generate-hero h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px;
+}
+
+.sb-generate-hero p {
+  font-size: 13px;
+  color: #b3b3b3;
+  margin: 0;
+}
+
+.sb-generate-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b3b3b3;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.sb-gen-textarea {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 12px;
+  resize: vertical;
+  min-height: 72px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+  line-height: 1.5;
+}
+
+.sb-gen-textarea:focus {
+  outline: none;
+  border-color: #1DB954;
+}
+
+.sb-gen-textarea::placeholder {
+  color: #535353;
+}
+
+.sb-gen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: #1DB954;
+  border: none;
+  border-radius: 24px;
+  color: #000;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.sb-gen-btn:hover:not(:disabled) {
+  background: #1ed760;
+  transform: scale(1.02);
+}
+
+.sb-gen-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.sb-gen-btn-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.sb-gen-btn-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.sb-gen-status {
+  font-size: 13px;
+  color: #b3b3b3;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* Player */
+.sb-gen-player {
+  background: #1a1a1a;
+  border: 1px solid #282828;
+  border-radius: 12px;
+  padding: 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.sb-gen-track-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Waveform visualization */
+.sb-gen-waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 48px;
+  padding: 0 4px;
+}
+
+.sb-gen-bar {
+  flex: 1;
+  max-width: 5px;
+  border-radius: 3px;
+  background: #535353;
+  height: 20%;
+  transition: height 0.1s;
+}
+
+.sb-gen-waveform.playing .sb-gen-bar {
+  animation: sb-wave 1.2s ease-in-out infinite alternate;
+  background: #1DB954;
+}
+
+@keyframes sb-wave {
+  0%   { height: 15%; }
+  100% { height: 85%; }
+}
+
+/* Stagger heights via nth-child for a realistic look */
+.sb-gen-waveform:not(.playing) .sb-gen-bar:nth-child(odd)  { height: 35%; }
+.sb-gen-waveform:not(.playing) .sb-gen-bar:nth-child(even) { height: 20%; }
+.sb-gen-waveform:not(.playing) .sb-gen-bar:nth-child(3n)   { height: 55%; }
+.sb-gen-waveform:not(.playing) .sb-gen-bar:nth-child(5n)   { height: 70%; }
+.sb-gen-waveform:not(.playing) .sb-gen-bar:nth-child(7n)   { height: 45%; }
+
+/* Controls row */
+.sb-gen-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sb-gen-play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #1DB954;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.sb-gen-play-btn:hover {
+  background: #1ed760;
+  transform: scale(1.08);
+}
+
+.sb-gen-play-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: #000;
+}
+
+.sb-gen-scrubber-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-gen-scrubber {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  position: relative;
+  cursor: pointer;
+}
+
+.sb-gen-scrubber-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: #1DB954;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.sb-gen-scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sb-gen-scrubber:hover .sb-gen-scrubber-thumb {
+  opacity: 1;
+}
+
+.sb-gen-time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #535353;
+}
+
+/* Prompt preview */
+.sb-gen-prompt-preview {
+  padding-top: 4px;
+}
+
+.sb-gen-prompt-preview details summary {
+  font-size: 11px;
+  color: #535353;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sb-gen-prompt-preview details summary:hover {
+  color: #b3b3b3;
+}
+
+.sb-gen-prompt-preview details p {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #535353;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Generate panel — save actions row */
+.sb-gen-save-row {
+  display: block;
+  padding-top: 12px;
+  border-top: 1px solid #282828;
+}
+
+.sb-gen-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #282828;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+
+.sb-gen-name-input:focus {
+  outline: none;
+  border-color: #1DB954;
+}
+
+.sb-gen-name-input::placeholder {
+  color: #535353;
+}
+
+.sb-gen-save-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.sb-gen-save-btn {
+  flex: 1;
+  background: #1DB954;
+  border: none;
+  border-radius: 20px;
+  color: #000;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sb-gen-save-btn:hover {
+  background: #1ed760;
+}
+
+.sb-gen-discard-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid #535353;
+  border-radius: 20px;
+  color: #b3b3b3;
+  font-size: 13px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.sb-gen-discard-btn:hover {
+  border-color: #f15e6c;
+  color: #f15e6c;
+}
+
+/* Generate panel — library */
+.sb-gen-library {
+  border-top: 1px solid #282828;
+  padding-top: 16px;
+  margin-top: 4px;
+}
+
+.sb-gen-library-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b3b3b3;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+
+.sb-gen-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.sb-gen-lib-item:hover {
+  background: #1a1a1a;
+}
+
+.sb-gen-lib-play {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #282828;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.sb-gen-lib-play:hover {
+  background: #1DB954;
+}
+
+.sb-gen-lib-play svg {
+  width: 12px;
+  height: 12px;
+  fill: #fff;
+}
+
+.sb-gen-lib-play:hover svg {
+  fill: #000;
+}
+
+.sb-gen-lib-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-gen-lib-label {
+  font-size: 13px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-gen-lib-date {
+  font-size: 11px;
+  color: #535353;
+  margin-top: 2px;
+}
+
+.sb-gen-lib-delete {
+  background: none;
+  border: none;
+  color: #535353;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.sb-gen-lib-delete:hover {
+  color: #f15e6c;
+}
+
+.sb-gen-lib-delete svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+

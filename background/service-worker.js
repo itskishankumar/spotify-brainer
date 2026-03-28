@@ -2,10 +2,19 @@
 // Routes LLM API calls through provider adapters, manages Spotify data pipeline.
 
 import { getAdapter } from '../llm/registry.js';
+import { LyriaAdapter } from '../music-gen/adapters/lyria.js';
+import { buildMusicPrompt } from '../music-gen/prompt-builder.js';
 import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
 import { getAccessToken, isLoggedIn, startLogin, logout, getClientId, setClientId } from '../lib/spotify-auth.js';
+
+const MUSIC_GEN_ADAPTERS = { lyria: new LyriaAdapter() };
+function getMusicGenAdapter(name) {
+  const adapter = MUSIC_GEN_ADAPTERS[name];
+  if (!adapter) throw new Error(`Unknown music gen provider: ${name}`);
+  return adapter;
+}
 
 // --- Spotify data state ---
 let spotifyData = {
@@ -98,6 +107,7 @@ function buildSystemPrompt() {
 
   return parts.join('\n');
 }
+
 
 function formatMs(ms) {
   const min = Math.floor(ms / 60000);
@@ -314,6 +324,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
     })();
     return true; // async
+  }
+
+  if (msg.type === 'music-generate') {
+    (async () => {
+      try {
+        const { provider, model, apiKey } = msg;
+        if (!apiKey) { sendResponse({ error: 'No API key provided.' }); return; }
+
+        // Read the user's configured LLM credentials to build the prompt
+        const llmSettings = await chrome.storage.local.get(['sb_provider']);
+        const llmProvider = llmSettings.sb_provider;
+        let llmAdapter = null;
+        let llmModel = null;
+        let llmApiKey = null;
+        if (llmProvider) {
+          const llmData = await chrome.storage.local.get([`sb_apiKey_${llmProvider}`, `sb_model_${llmProvider}`]);
+          llmApiKey = llmData[`sb_apiKey_${llmProvider}`];
+          llmModel = llmData[`sb_model_${llmProvider}`];
+          if (llmApiKey && llmModel) llmAdapter = getAdapter(llmProvider);
+        }
+
+        const musicAdapter = getMusicGenAdapter(provider);
+        const prompt = await buildMusicPrompt(msg.userPrompt, intelligence, historyMetrics, spotifyData, model, llmAdapter, llmModel, llmApiKey);
+        const result = await musicAdapter.generate({ prompt, model }, apiKey);
+        sendResponse({ ...result, prompt });
+      } catch (e) {
+        console.error('[Spotify Brainer] Music generation failed:', e.message);
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'music-test') {
+    (async () => {
+      try {
+        const adapter = getMusicGenAdapter(msg.provider);
+        const result = await adapter.validate(msg.apiKey);
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ valid: false, error: e.message });
+      }
+    })();
+    return true;
   }
 
   // intelligence and historyMetrics are computed directly in this worker
