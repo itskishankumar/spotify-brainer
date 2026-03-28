@@ -58,6 +58,9 @@ export class OpenAIAdapter extends LLMAdapter {
         type: 'function',
         function: { name: t.name, description: t.description, parameters: t.input_schema },
       }));
+      if (request.toolChoice === 'any') {
+        body.tool_choice = 'required';
+      }
     }
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {

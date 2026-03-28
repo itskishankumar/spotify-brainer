@@ -256,9 +256,15 @@
       <div class="sb-generate-inner">
         <div class="sb-generate-hero">
           <h2>Generate Music</h2>
-          <p>AI-generated 30-second clip tailored to your taste</p>
+          <p id="sb-gen-subtitle">AI-generated music tailored to your taste</p>
+          <div class="sb-gen-mode-toggle">
+            <button id="sb-gen-mode-clip" class="sb-gen-mode-btn active">Clip</button>
+            <button id="sb-gen-mode-realtime" class="sb-gen-mode-btn">Realtime</button>
+          </div>
         </div>
 
+        <!-- Clip mode (existing generate UI) -->
+        <div id="sb-gen-clip-panel">
         <div class="sb-generate-prompt-wrap">
           <label class="sb-generate-label">What are you in the mood for? <span style="color:#535353">(optional)</span></label>
           <textarea id="sb-gen-prompt" class="sb-gen-textarea" placeholder="e.g. &quot;a song I would've liked in Sept 2024&quot;, &quot;something for a late night drive&quot;, &quot;upbeat like my summer playlists&quot;, or leave blank to let AI decide"></textarea>
@@ -349,6 +355,37 @@
         <div class="sb-gen-library" id="sb-gen-library" style="display:none">
           <div class="sb-gen-library-header">Saved Tracks <span id="sb-gen-lib-count" class="sb-gen-lib-count"></span></div>
           <div id="sb-gen-library-list"></div>
+        </div>
+        </div><!-- end sb-gen-clip-panel -->
+
+        <!-- Realtime mode panel -->
+        <div id="sb-rt-panel" class="sb-rt-panel" style="display:none">
+          <div class="sb-rt-visualizer" id="sb-rt-visualizer">
+            <div class="sb-rt-viz-bar"></div>
+            <div class="sb-rt-viz-bar"></div>
+            <div class="sb-rt-viz-bar"></div>
+            <div class="sb-rt-viz-bar"></div>
+            <div class="sb-rt-viz-bar"></div>
+          </div>
+          <div class="sb-rt-slider-wrap">
+            <div class="sb-rt-slider-labels">
+              <span class="sb-rt-label-anti">Anti-Taste</span>
+              <span class="sb-rt-label-current">You Now</span>
+              <span class="sb-rt-label-future">Future Me</span>
+            </div>
+            <input type="range" id="sb-rt-slider" class="sb-rt-slider" min="0" max="100" value="50" step="1" />
+            <div class="sb-rt-slider-value" id="sb-rt-slider-value">50</div>
+          </div>
+          <div class="sb-rt-controls">
+            <button id="sb-rt-play" class="sb-rt-ctrl-btn sb-rt-play-btn" title="Play / Pause">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button id="sb-rt-stop" class="sb-rt-ctrl-btn sb-rt-stop-btn" title="Stop" disabled>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+            </button>
+          </div>
+          <div id="sb-rt-status" class="sb-rt-status">Ready</div>
+          <div class="sb-rt-params" id="sb-rt-params"></div>
         </div>
       </div>
     </div>
@@ -995,8 +1032,9 @@
     },
     gemini: {
       models: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', context: 1048576 },
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', context: 1048576 },
         { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', context: 1048576 },
-        { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro', context: 1048576 },
       ],
       keyUrl: 'https://aistudio.google.com/apikey',
     },
@@ -2831,6 +2869,187 @@
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         doGenerate(null);
+      }
+    });
+
+    // --- Realtime mode ---
+    const clipPanel = document.getElementById('sb-gen-clip-panel');
+    const rtPanel = document.getElementById('sb-rt-panel');
+    const modeClipBtn = document.getElementById('sb-gen-mode-clip');
+    const modeRtBtn = document.getElementById('sb-gen-mode-realtime');
+    const rtSlider = document.getElementById('sb-rt-slider');
+    const rtSliderValue = document.getElementById('sb-rt-slider-value');
+    const rtPlayBtn = document.getElementById('sb-rt-play');
+    const rtStopBtn = document.getElementById('sb-rt-stop');
+    const rtStatus = document.getElementById('sb-rt-status');
+    const rtParams = document.getElementById('sb-rt-params');
+    const rtVisualizer = document.getElementById('sb-rt-visualizer');
+
+    let rtStreaming = false;
+    let rtPaused = false;
+    let rtSliderDebounce = null;
+
+    const PLAY_ICON = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+
+    // Mode toggle
+    const genSubtitle = document.getElementById('sb-gen-subtitle');
+    modeClipBtn.addEventListener('click', () => {
+      if (rtStreaming) return; // can't switch while streaming
+      modeClipBtn.classList.add('active');
+      modeRtBtn.classList.remove('active');
+      clipPanel.style.display = '';
+      rtPanel.style.display = 'none';
+      genSubtitle.textContent = 'AI-generated music tailored to your taste';
+    });
+    modeRtBtn.addEventListener('click', () => {
+      if (isGenerating) return; // can't switch while generating clip
+      modeRtBtn.classList.add('active');
+      modeClipBtn.classList.remove('active');
+      clipPanel.style.display = 'none';
+      rtPanel.style.display = '';
+      genSubtitle.textContent = 'Steer AI-generated music in real time with the familiarity slider';
+    });
+
+    // Slider
+    rtSlider.addEventListener('input', () => {
+      const pos = parseInt(rtSlider.value);
+      rtSliderValue.textContent = pos;
+      updateSliderStyle(pos);
+
+      if (!rtStreaming) return;
+      clearTimeout(rtSliderDebounce);
+      rtSliderDebounce = setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'realtime-slider', position: pos });
+      }, 250);
+    });
+
+    function updateSliderStyle(pos) {
+      // Color the slider track based on position
+      const pct = pos / 100;
+      let color;
+      if (pos <= 50) {
+        const t = pos / 50;
+        // Red (anti) → Green (current)
+        const r = Math.round(lerp(220, 29, t));
+        const g = Math.round(lerp(50, 185, t));
+        const b = Math.round(lerp(50, 84, t));
+        color = `rgb(${r},${g},${b})`;
+      } else {
+        const t = (pos - 50) / 50;
+        // Green (current) → Blue (future)
+        const r = Math.round(lerp(29, 60, t));
+        const g = Math.round(lerp(185, 120, t));
+        const b = Math.round(lerp(84, 220, t));
+        color = `rgb(${r},${g},${b})`;
+      }
+      rtSlider.style.setProperty('--sb-rt-color', color);
+      rtSliderValue.style.color = color;
+
+      // Update params display
+      if (pos <= 10) rtParams.textContent = 'Genres you never listen to';
+      else if (pos <= 40) rtParams.textContent = 'Blending unfamiliar genres with your taste';
+      else if (pos <= 60) rtParams.textContent = 'Your current taste';
+      else if (pos <= 90) rtParams.textContent = 'Blending your taste with where it\'s heading';
+      else rtParams.textContent = 'Where your taste is heading next';
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    updateSliderStyle(50);
+
+    // Play/Pause
+    rtPlayBtn.addEventListener('click', async () => {
+      if (!rtStreaming) {
+        // Start session
+        const provider = (await chrome.storage.local.get('sb_music_provider')).sb_music_provider || 'lyria';
+        const apiKey = (await chrome.storage.local.get(`sb_music_key_${provider}`))[`sb_music_key_${provider}`];
+        if (!apiKey) {
+          rtStatus.textContent = 'No API key — configure in Settings';
+          return;
+        }
+
+        rtStatus.textContent = 'Connecting...';
+        rtPlayBtn.innerHTML = PAUSE_ICON;
+        rtStopBtn.disabled = false;
+        rtSlider.disabled = false;
+        rtVisualizer.classList.add('active');
+
+        const resp = await chrome.runtime.sendMessage({
+          type: 'realtime-start',
+          apiKey,
+          sliderPosition: parseInt(rtSlider.value),
+        });
+
+        if (resp?.error) {
+          rtStatus.textContent = resp.error;
+          rtPlayBtn.innerHTML = PLAY_ICON;
+          rtStopBtn.disabled = true;
+          rtVisualizer.classList.remove('active');
+          return;
+        }
+
+        rtStreaming = true;
+        rtPaused = false;
+      } else if (rtPaused) {
+        // Resume
+        chrome.runtime.sendMessage({ type: 'realtime-play' });
+        rtPlayBtn.innerHTML = PAUSE_ICON;
+        rtVisualizer.classList.add('active');
+        rtPaused = false;
+      } else {
+        // Pause
+        chrome.runtime.sendMessage({ type: 'realtime-pause' });
+        rtPlayBtn.innerHTML = PLAY_ICON;
+        rtVisualizer.classList.remove('active');
+        rtPaused = true;
+      }
+    });
+
+    // Stop
+    rtStopBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'realtime-stop' });
+      rtStreaming = false;
+      rtPaused = false;
+      rtPlayBtn.innerHTML = PLAY_ICON;
+      rtStopBtn.disabled = true;
+      rtVisualizer.classList.remove('active');
+      rtStatus.textContent = 'Ready';
+    });
+
+    // Listen for status updates from offscreen via service worker
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.type !== 'realtime-status') return;
+      switch (msg.state) {
+        case 'connecting': rtStatus.textContent = 'Connecting...'; break;
+        case 'ready': rtStatus.textContent = 'Connected — starting...'; break;
+        case 'streaming': rtStatus.textContent = 'Streaming'; break;
+        case 'paused': rtStatus.textContent = 'Paused'; break;
+        case 'stopped':
+          rtStatus.textContent = 'Ready';
+          rtStreaming = false;
+          rtPaused = false;
+          rtPlayBtn.innerHTML = PLAY_ICON;
+          rtStopBtn.disabled = true;
+          rtVisualizer.classList.remove('active');
+          break;
+        case 'disconnected':
+          rtStatus.textContent = msg.detail || 'Disconnected';
+          rtStreaming = false;
+          rtPaused = false;
+          rtPlayBtn.innerHTML = PLAY_ICON;
+          rtStopBtn.disabled = true;
+          rtVisualizer.classList.remove('active');
+          break;
+        case 'error':
+          rtStatus.textContent = msg.detail || 'Error';
+          break;
+        case 'prompt_filtered':
+          rtStatus.textContent = 'Prompt filtered — adjusting...';
+          break;
+        case 'resetting':
+          rtStatus.textContent = 'Resetting context...';
+          break;
       }
     });
   })();

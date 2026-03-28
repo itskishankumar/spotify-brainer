@@ -124,17 +124,19 @@ export function buildFutureTasteSystemPrompt(historyMetrics, spotifyData, intell
   const today = new Date().toISOString().slice(0, 10);
   const lines = [];
 
+  // Code-side randomness: pick a specific extrapolation angle so each run explores a different direction
+  const angle = pickFutureAngle(intelligence);
+
   lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria, running in FUTURE TASTE mode.`);
   lines.push('');
   lines.push('Your job: Generate a track that the user will love in 3-6 months — not what they listen to now, but where their taste is heading.');
   lines.push('');
+  lines.push('## MANDATORY: Your extrapolation focus for this run');
+  lines.push(`The system has selected this specific angle to explore: **${angle.description}**`);
+  lines.push(`You MUST center your extrapolation around this direction. Do not default to the most obvious trend — focus specifically on this angle.`);
+  lines.push('');
   lines.push('## Step 1: Map the trajectory');
-  lines.push('You MUST call ALL of these tools — they are all required for a good prediction:');
-  lines.push('1. get_taste_drift — your PRIMARY data source. Shows emerging/fading artists, rising/declining genres, velocity, and historical play count trends');
-  lines.push('2. get_top_artists with time_range="short_term" — what the user listens to NOW');
-  lines.push('3. get_top_artists with time_range="long_term" — their baseline taste (the delta between short and long IS the drift)');
-  lines.push('4. get_history_taste — their full listening history with play counts, decade splits, and listening patterns');
-  lines.push('5. get_lastfm_tags for the EMERGING/rising artists from taste drift — their tags reveal the sonic territory the user is moving toward');
+  lines.push('The user\'s taste profile, top artists (short + long term), taste drift, history, and Last.fm tags are provided in the user message below. Analyze them carefully.');
   lines.push('');
   lines.push('Key signals to look for:');
   lines.push('- Historical drift (GDPR data) is MORE reliable than API drift — it uses real play counts');
@@ -143,7 +145,7 @@ export function buildFutureTasteSystemPrompt(historyMetrics, spotifyData, intell
   lines.push('- Genre shifts between long-term and short-term top artists');
   lines.push('');
   lines.push('## Step 2: Extrapolate forward');
-  lines.push('Based on the drift data, predict the next logical step:');
+  lines.push('Based on the drift data AND your assigned angle, predict the next logical step:');
   lines.push('- If rising genres are "shoegaze, dream-pop" → extrapolate toward deeper shoegaze, or adjacent genres like noise-pop, ethereal wave');
   lines.push('- If emerging artists share a specific production style → lean further into that style');
   lines.push('- If popularity is drifting underground → go even more obscure');
@@ -178,9 +180,55 @@ export function buildFutureTasteSystemPrompt(historyMetrics, spotifyData, intell
 }
 
 // ---------------------------------------------------------------------------
+// pickFutureAngle — injects code-side randomness into future-taste extrapolation
+// so each run explores a different direction from the user's drift data.
+function pickFutureAngle(intelligence) {
+  const angles = [];
+  const drift = intelligence?.tasteDrift;
+
+  // Angles derived from actual drift data
+  if (drift?.genreDrift?.rising?.length) {
+    const rising = drift.genreDrift.rising;
+    // Shuffle and pick one rising genre to focus on
+    const shuffled = [...rising].sort(() => Math.random() - 0.5);
+    for (const g of shuffled.slice(0, 3)) {
+      angles.push({ description: `Extrapolate from the rising genre "${g.genre}" — push it further into adjacent, deeper territory` });
+    }
+  }
+
+  if (drift?.emerging?.length) {
+    const shuffled = [...drift.emerging].sort(() => Math.random() - 0.5);
+    const artist = shuffled[0];
+    if (artist?.name) {
+      angles.push({ description: `Focus on the sonic qualities of recently discovered artists like ${artist.name} — what genre territory do they point toward next?` });
+    }
+  }
+
+  if (drift?.decadeDrift) {
+    const rising = Object.entries(drift.decadeDrift).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (rising.length) {
+      const decade = rising[Math.floor(Math.random() * rising.length)][0];
+      angles.push({ description: `Lean into the ${decade}s revival trend — explore deeper cuts and production styles authentic to that decade` });
+    }
+  }
+
+  // Generic angles as fallback variety
+  angles.push(
+    { description: 'Focus on production evolution — imagine the production style the user is gravitating toward, pushed to its logical extreme' },
+    { description: 'Focus on mood trajectory — if the user is shifting emotionally (darker, brighter, more introspective), amplify that shift' },
+    { description: 'Focus on tempo and energy drift — extrapolate whether the user is moving toward faster/denser or slower/sparser music' },
+    { description: 'Focus on instrumentation trends — what new instruments or sounds are appearing in recent favorites? Push that sonic palette further' },
+    { description: 'Cross-pollinate: take two rising trends and imagine where they intersect in 6 months' },
+  );
+
+  // Shuffle and pick one
+  const shuffled = angles.sort(() => Math.random() - 0.5);
+  return shuffled[0];
+}
+
+// ---------------------------------------------------------------------------
 // Anti-taste genre pool — grouped by sonic distance category.
-// Each run, the code randomly selects a category and a handful of candidates,
-// so the LLM sees a different shortlist every time.
+// Each run, the code randomly selects one genre the user doesn't listen to.
 const ANTI_TASTE_POOL = {
   'Global & Regional': [
     'Afrobeats', 'amapiano', 'highlife', 'afro-jazz', 'ethio-jazz', 'desert blues',
@@ -248,24 +296,24 @@ function pickAntiTasteCandidates(userGenres) {
   const userSet = new Set((userGenres || []).map((g) => g.toLowerCase()));
   const categories = Object.keys(ANTI_TASTE_POOL);
 
-  // Shuffle categories
-  for (let i = categories.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [categories[i], categories[j]] = [categories[j], categories[i]];
+  // Collect ALL eligible genres across all categories
+  const allEligible = [];
+  for (const cat of categories) {
+    for (const genre of ANTI_TASTE_POOL[cat]) {
+      if (!userSet.has(genre.toLowerCase())) {
+        allEligible.push({ genre, category: cat });
+      }
+    }
   }
 
-  // Pick 3 random categories, from each pick 3 random genres the user doesn't already listen to
-  const picks = [];
-  for (const cat of categories.slice(0, 3)) {
-    const pool = ANTI_TASTE_POOL[cat].filter((g) => !userSet.has(g.toLowerCase()));
-    // Shuffle pool
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    picks.push({ category: cat, candidates: pool.slice(0, 3) });
+  // Shuffle and pick ONE definitive genre
+  for (let i = allEligible.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allEligible[i], allEligible[j]] = [allEligible[j], allEligible[i]];
   }
-  return picks;
+
+  const pick = allEligible[0] || { genre: 'Tuvan throat singing', category: 'Global & Regional' };
+  return pick;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,35 +333,22 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
     }
   }
 
-  // Code-side randomness: pick candidates BEFORE the LLM sees the prompt
-  const candidates = pickAntiTasteCandidates(userGenres);
+  // Code-side randomness: pick ONE genre BEFORE the LLM sees the prompt — no LLM choice involved
+  const pick = pickAntiTasteCandidates(userGenres);
 
   lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria, running in ANTI-TASTE mode.`);
   lines.push('');
-  lines.push('Your job: Generate a track from the user\'s BLIND SPOTS — genres, decades, tempos, and styles they almost never listen to. This is a musical dare — surprise them with something they\'d never pick themselves.');
+  lines.push('Your job: Generate a track from the user\'s BLIND SPOTS — genres they almost never listen to. This is a musical dare — surprise them with something they\'d never pick themselves.');
   lines.push('');
   lines.push('## MANDATORY: Your genre assignment for this run');
-  lines.push('The system has randomly selected the following candidate genres for you. You MUST pick from these candidates — do NOT substitute your own choice:');
+  lines.push(`The system has randomly selected **${pick.genre}** (from the ${pick.category} family) for this run.`);
+  lines.push(`You MUST use this exact genre — do NOT substitute your own choice or pick a different genre.`);
+  lines.push(`Build the entire track around authentic ${pick.genre} characteristics.`);
   lines.push('');
-  for (const pick of candidates) {
-    lines.push(`**${pick.category}:** ${pick.candidates.join(', ')}`);
-  }
+  lines.push('## Step 1: Analyze the user\'s listening data');
+  lines.push('The user\'s taste profile, top artists, and Last.fm genre tags are provided in the user message below. Study them to understand what they DO listen to, so you can find the right familiar anchor element.');
   lines.push('');
-  lines.push('Pick the ONE candidate from the list above that is most distant from the user\'s taste profile (after you gather their data in Step 1). If you determine that one of these candidates actually overlaps with the user\'s existing taste, skip it and pick another from the list.');
-  lines.push('');
-  lines.push('## Step 1: Map what the user DOES listen to');
-  lines.push('Use tools to gather the user\'s full taste profile:');
-  lines.push('- Call get_taste_profile for personality tags, decade distribution, tempo preference');
-  lines.push('- Call get_top_artists (short + long term) to see their artist range');
-  lines.push('- Call get_lastfm_tags for those artists to see exact genres/moods/styles');
-  lines.push('- Call get_history_taste for overall listening patterns');
-  lines.push('- Call get_taste_drift to see which genres are rising/fading — avoid generating from rising genres, those are comfort zone');
-  lines.push('');
-  lines.push('## Step 2: Pick from your assigned candidates');
-  lines.push('From the candidates above, pick the one that is MOST absent from the user\'s data.');
-  lines.push('Verify it\'s a genuine blind spot — not just underrepresented, but truly absent or near-zero.');
-  lines.push('');
-  lines.push('## Step 3: Build the anti-taste prompt');
+  lines.push('## Step 2: Build the anti-taste prompt');
   lines.push('- Base the track firmly in that genre with AUTHENTIC characteristics — instruments, rhythms, production, and structure native to that specific style');
   lines.push('- Research what makes that genre sound the way it does: specific scales, time signatures, typical tempos, characteristic instruments, production aesthetics');
   lines.push('- Add ONE familiar anchor — a single subtle element from the user\'s comfort zone (a mood, a tempo feel, a production texture) to make it approachable');

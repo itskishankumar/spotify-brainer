@@ -1998,3 +1998,196 @@ body.spotify-brainer-open {
   fill: currentColor;
 }
 
+/* --- Mode toggle (Clip / Realtime) --- */
+.sb-gen-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: #282828;
+  border-radius: 20px;
+  padding: 3px;
+  margin-top: 8px;
+  width: fit-content;
+  align-self: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+.sb-gen-mode-btn {
+  background: transparent;
+  color: #b3b3b3;
+  border: none;
+  border-radius: 17px;
+  padding: 6px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sb-gen-mode-btn.active {
+  background: #1DB954;
+  color: #000;
+}
+.sb-gen-mode-btn:hover:not(.active) {
+  color: #fff;
+}
+
+/* Clip panel inherits generate-inner layout */
+#sb-gen-clip-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* --- Realtime panel --- */
+.sb-rt-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 0;
+}
+
+/* Visualizer bars */
+.sb-rt-visualizer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 60px;
+  opacity: 0.3;
+  transition: opacity 0.3s;
+}
+.sb-rt-visualizer.active {
+  opacity: 1;
+}
+.sb-rt-viz-bar {
+  width: 6px;
+  background: var(--sb-rt-color, #1DB954);
+  border-radius: 3px;
+  height: 10px;
+  transition: background 0.3s;
+}
+.sb-rt-visualizer.active .sb-rt-viz-bar {
+  animation: sb-rt-bounce 0.8s ease-in-out infinite;
+}
+.sb-rt-visualizer.active .sb-rt-viz-bar:nth-child(1) { animation-delay: 0s; }
+.sb-rt-visualizer.active .sb-rt-viz-bar:nth-child(2) { animation-delay: 0.15s; }
+.sb-rt-visualizer.active .sb-rt-viz-bar:nth-child(3) { animation-delay: 0.3s; }
+.sb-rt-visualizer.active .sb-rt-viz-bar:nth-child(4) { animation-delay: 0.45s; }
+.sb-rt-visualizer.active .sb-rt-viz-bar:nth-child(5) { animation-delay: 0.6s; }
+@keyframes sb-rt-bounce {
+  0%, 100% { height: 10px; }
+  50% { height: 50px; }
+}
+
+/* Slider */
+.sb-rt-slider-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sb-rt-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #686868;
+  padding: 0 2px;
+}
+.sb-rt-label-anti { color: #dc3232; }
+.sb-rt-label-current { color: #1DB954; }
+.sb-rt-label-future { color: #3c78d8; }
+
+.sb-rt-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #404040;
+  outline: none;
+  cursor: pointer;
+}
+.sb-rt-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sb-rt-color, #1DB954);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  transition: background 0.15s;
+}
+.sb-rt-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sb-rt-color, #1DB954);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.sb-rt-slider-value {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1DB954;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+/* Transport controls */
+.sb-rt-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.sb-rt-ctrl-btn {
+  background: #282828;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.sb-rt-play-btn {
+  width: 56px;
+  height: 56px;
+  background: #1DB954;
+  color: #000;
+}
+.sb-rt-play-btn:hover {
+  background: #1ed760;
+  transform: scale(1.05);
+}
+.sb-rt-stop-btn {
+  width: 40px;
+  height: 40px;
+}
+.sb-rt-stop-btn:hover:not(:disabled) {
+  background: #383838;
+}
+.sb-rt-stop-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Status + params */
+.sb-rt-status {
+  font-size: 13px;
+  color: #1DB954;
+  font-weight: 600;
+  text-align: center;
+}
+.sb-rt-params {
+  font-size: 11px;
+  color: #686868;
+  text-align: center;
+  min-height: 14px;
+}
+

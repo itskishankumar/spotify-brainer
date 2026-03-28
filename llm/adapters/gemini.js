@@ -7,8 +7,9 @@ export class GeminiAdapter extends LLMAdapter {
   displayName = 'Google Gemini';
   apiKeyUrl = 'https://aistudio.google.com/apikey';
   models = [
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1048576 },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576 },
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576 },
-    { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro', contextWindow: 1048576 },
   ];
 
   async validate(apiKey) {
@@ -34,6 +35,9 @@ export class GeminiAdapter extends LLMAdapter {
     };
     if (request.tools?.length) {
       body.tools = [{ functionDeclarations: request.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.input_schema })) }];
+      if (request.toolChoice === 'any') {
+        body.tool_config = { function_calling_config: { mode: 'ANY' } };
+      }
     }
 
     const res = await fetch(
@@ -72,19 +76,27 @@ export class GeminiAdapter extends LLMAdapter {
 
     (async () => {
       try {
+        const body = {
+          systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+          contents,
+          generationConfig: {
+            maxOutputTokens: request.maxTokens || 4096,
+            temperature: request.temperature,
+          },
+        };
+        if (request.tools?.length) {
+          body.tools = [{ functionDeclarations: request.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.input_schema })) }];
+          if (request.toolChoice === 'any') {
+            body.tool_config = { function_calling_config: { mode: 'ANY' } };
+          }
+        }
+
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:streamGenerateContent?alt=sse&key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-              contents,
-              generationConfig: {
-                maxOutputTokens: request.maxTokens || 4096,
-                temperature: request.temperature,
-              },
-            }),
+            body: JSON.stringify(body),
             signal: controller.signal,
           }
         );
@@ -99,6 +111,7 @@ export class GeminiAdapter extends LLMAdapter {
         const decoder = new TextDecoder();
         let buffer = '';
         let usage = { inputTokens: 0, outputTokens: 0 };
+        const collectedToolCalls = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -114,19 +127,30 @@ export class GeminiAdapter extends LLMAdapter {
 
             try {
               const event = JSON.parse(data);
-              const text = event.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) {
-                onChunk({ type: 'text', content: text });
+              const parts = event.candidates?.[0]?.content?.parts || [];
+              for (const part of parts) {
+                if (part.text) {
+                  onChunk({ type: 'text', content: part.text });
+                }
+                if (part.functionCall) {
+                  const toolId = `gemini-fc-${collectedToolCalls.length}`;
+                  onChunk({ type: 'tool_use_start', toolName: part.functionCall.name, toolId });
+                  onChunk({ type: 'tool_use', toolId, toolName: part.functionCall.name, input: part.functionCall.args || {} });
+                  collectedToolCalls.push({ id: toolId, name: part.functionCall.name });
+                }
               }
               if (event.usageMetadata) {
                 usage.inputTokens = event.usageMetadata.promptTokenCount || 0;
                 usage.outputTokens = event.usageMetadata.candidatesTokenCount || 0;
               }
-            } catch {}
+            } catch (parseErr) {
+              console.warn('[Gemini stream] Parse error:', parseErr.message, 'data:', data?.slice(0, 200));
+            }
           }
         }
 
-        onChunk({ type: 'done', content: '', usage });
+        const stopReason = collectedToolCalls.length > 0 ? 'tool_use' : null;
+        onChunk({ type: 'done', content: '', usage, stopReason });
       } catch (e) {
         if (e.name !== 'AbortError') {
           onChunk({ type: 'error', content: e.message });
@@ -161,7 +185,7 @@ export class GeminiAdapter extends LLMAdapter {
       // User message with tool_result blocks → Gemini functionResponse parts
       if (msg.role === 'user' && Array.isArray(msg.content) && msg.content[0]?.type === 'tool_result') {
         const parts = msg.content.map((b) => ({
-          functionResponse: { name: b.tool_use_id, response: { content: b.content } },
+          functionResponse: { name: b.tool_name || b.tool_use_id, response: { content: b.content } },
         }));
         contents.push({ role: 'user', parts });
         continue;

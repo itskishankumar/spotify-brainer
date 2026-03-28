@@ -51,6 +51,9 @@ export class AnthropicAdapter extends LLMAdapter {
     };
     if (request.tools?.length) {
       body.tools = request.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+      if (request.toolChoice === 'any') {
+        body.tool_choice = { type: 'any' };
+      }
     }
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -103,6 +106,9 @@ export class AnthropicAdapter extends LLMAdapter {
         // Add tools if provided
         if (request.tools && request.tools.length > 0) {
           body.tools = request.tools;
+          if (request.toolChoice === 'any') {
+            body.tool_choice = { type: 'any' };
+          }
         }
 
         const res = await fetch('https://api.anthropic.com/v1/messages', {

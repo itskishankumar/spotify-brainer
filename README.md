@@ -18,9 +18,10 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
-- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; two-phase agentic loop (plan tools → execute all → compact results → final prompt) minimizes LLM calls and context usage; save and replay clips with a built-in audio player
-- **Anti-Taste mode** — generates music from your blind spots; analyzes your full taste profile to find genres, decades, tempos, and styles you never listen to; a code-side randomizer selects candidates from a pool of ~200 subgenres across 9 categories (global, electronic, heavy, experimental, jazz, classical, retro, urban, folk), ensuring variety across runs; adds one familiar anchor element to keep the dare palatable; excluded from history/drift tools to ensure pure blind-spot exploration
-- **Future Me mode** — predicts where your taste is heading in 3-6 months and generates a track from that predicted future; uses the unified taste drift vector (Spotify API drift + GDPR historical drift merged into top-level emerging/fading) to extrapolate rising genres, emerging artists, and shifting preferences forward; velocity-aware boldness (high velocity = bold extrapolation, low = conservative); auto-injects drift and history data if the LLM doesn't request them
+- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; save and replay clips with a built-in audio player
+- **Realtime mode** — continuous AI music generation using Lyria RealTime API via WebSocket; a familiarity slider (0–100) lets you steer the output in real time: 0 = Anti-Taste (blind-spot genres), 50 = Your Current Taste, 100 = Future Me; all parameters (prompts, BPM, density, brightness) interpolate smoothly across the spectrum; runs in a Chrome offscreen document for Web Audio API access; genre-appropriate parameters per anchor point derived from a ~40-genre lookup table
+- **Anti-Taste mode** — generates music from your blind spots; the system deterministically picks one random genre from a pool of ~200 subgenres across 9 categories (global, electronic, heavy, experimental, jazz, classical, retro, urban, folk), filtered against the user's listening history, so the LLM has no say in genre selection — ensuring true variety across runs; all necessary taste data (profile, top artists, Last.fm tags) is pre-fetched deterministically rather than relying on the LLM to pick tools; adds one familiar anchor element to keep the dare palatable
+- **Future Me mode** — predicts where your taste is heading in 3-6 months and generates a track from that predicted future; uses the unified taste drift vector (Spotify API drift + GDPR historical drift merged into top-level emerging/fading) to extrapolate rising genres, emerging artists, and shifting preferences forward; a code-side randomizer picks a different extrapolation angle each run (rising genre focus, decade revival, production evolution, mood trajectory, etc.) to prevent repetitive outputs; velocity-aware boldness (high velocity = bold extrapolation, low = conservative); all taste data pre-fetched deterministically
 - **Taste drift analysis** — computes a unified taste drift vector from two data sources merged into top-level emerging/fading lists: (1) Spotify API drift comparing long-term vs short-term top artists/tracks for genre shifts, decade shifts, popularity drift, and velocity; (2) GDPR historical drift comparing actual play counts across 12-month, 3-month, and 1-month windows for rising/fading artists with momentum indicators, new discoveries, artist concentration changes, and monthly volume trends; source-tagged (`api`/`history`) so the LLM knows provenance
 - **Generation insights** — Anti-Taste and Future Me modes display the LLM's reasoning explaining what metrics drove the generation
 - **Album art generation** — automatically generates album cover art for each music clip using Nano Banana (Google Imagen); art generates asynchronously (non-blocking) and arrives after audio with a diffusion-style blur-to-sharp reveal animation; displays in the player and as thumbnails in the saved tracks library
@@ -100,6 +101,7 @@ When configured, the music generation pipeline fetches crowd-sourced tags from L
 7. Use **Anti-Taste** to generate from your blind spots — genres and styles you never listen to
 8. Use **Future Me** to generate a track from your predicted future taste based on drift analysis
 9. **Export** any clip as an MP3 with embedded cover art and title metadata
+10. Switch to **Realtime** mode to stream continuous AI-generated music with a familiarity slider — drag left toward Anti-Taste, center for your current taste, or right toward Future Me
 
 ### 7. Album art generation (optional)
 
@@ -138,10 +140,14 @@ spotify-brainer/
 │   └── registry.js            # Provider registry
 ├── music-gen/
 │   ├── prompt-builder.js      # Music agent system prompt (normal/anti-taste/future-taste), Lyria JSON assembly, genre fallback, anti-taste genre pool with code-side randomizer
+│   ├── realtime-anchors.js    # Realtime mode: taste anchor computation (anti/current/future), parameter interpolation, genre-appropriate BPM/density/brightness lookup
 │   ├── types.js               # Unified MusicGenRequest/MusicGenResponse
 │   ├── adapter.js             # Base adapter interface
 │   └── adapters/
 │       └── lyria.js           # Lyria (Google AI) adapter
+├── offscreen/
+│   ├── offscreen.html         # Minimal shell for Chrome offscreen document
+│   └── offscreen.js           # Lyria RealTime WebSocket + Web Audio API PCM playback
 ├── image-gen/
 │   ├── adapter.js             # Base ImageGenAdapter interface
 │   └── adapters/
@@ -190,43 +196,39 @@ GDPR Import  ──→  IndexedDB ──┤
 
 Music Generation Pipeline:
 
-buildMusicAgentSystemPrompt()  ──→  Two-phase LLM agentic loop
-  ├─ Normal mode                      Claude / OpenAI / Gemini
-  ├─ Anti-Taste mode (blind spots,
-  │   code-side genre randomizer)
-  └─ Future Me mode (taste drift
-      vector auto-injected)
-                                              │
-                                   Phase 1: Plan (tool selection)
-                                    ┌─────────┼─────────┐
-                                    ▼         ▼         ▼
-                          get_history_taste  get_playlists  get_lastfm_tags
-                          get_top_artists   search         (batch artist +
-                          get_top_tracks    get_taste_     track tag fetch)
-                          (auto-enriched    profile             │
-                           with Last.fm)         │              │
-                                    │            │              ▼
-                                    │            │        Last.fm API
-                                    │            │     artist.getTopTags
-                                    ▼            ▼     track.getTopTags
-                           Phase 2: Compact results → final Lyria prompt
-                                              │
-                                              ▼
-                                    assembleLyriaPrompt()
-                                      (JSON → string)
+Clip Mode (Normal):
+  buildMusicAgentSystemPrompt()  ──→  Two-phase LLM agentic loop
+                                        Phase 1: LLM selects tools
+                                        Phase 2: Execute → compact → final Lyria prompt
+
+Clip Mode (Anti-Taste / Future Me):
+  Deterministic data fetch  ──→  Single LLM call
+    get_taste_profile               (all data pre-loaded,
+    get_top_artists (short+long)     no tool selection needed)
+    get_lastfm_tags                       │
+    + get_taste_drift (future only)       ▼
+    + get_history_taste (future only)  assembleLyriaPrompt()
                                               │
                                     ┌─────────┼─────────┐
                                     ▼         ▼         ▼
                               MusicGenAdapter  ImageGenAdapter  VideoGenAdapter
                                 Lyria           Nano Banana       Veo
                              (audio clip)     (album art, auto)  (video, on-demand)
-                                    │              │                │
-                                    ▼              ▼                ▼
-                              Generated audio  Album cover art  Music video
-                              stored locally   shown in player  shown in player
                                     │
                                     ▼
                               Export MP3 (ID3v2 tags: title, artist, cover art)
+
+Realtime Mode:
+  computeAnchors()  ──→  3 taste anchors (anti / current / future)
+        │                   with genre-appropriate BPM/density/brightness
+        ▼
+  interpolateAtPosition(slider 0–100)
+        │
+        ▼
+  Offscreen Document  ──→  Lyria RealTime WebSocket (wss://)
+        │                    weighted prompt blending
+        ▼                    PCM audio via Web Audio API
+  Service Worker relay  ←──→  Content Script UI (slider, transport, visualizer)
 ```
 
 ## Adding Providers
