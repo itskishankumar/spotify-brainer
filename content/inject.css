@@ -727,7 +727,8 @@ body.spotify-brainer-open {
   margin-top: 2px;
 }
 
-.sb-conv-delete-btn {
+.sb-conv-delete-btn,
+.sb-conv-export-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -738,18 +739,24 @@ body.spotify-brainer-open {
   flex-shrink: 0;
 }
 
-.sb-conv-delete-btn svg {
+.sb-conv-delete-btn svg,
+.sb-conv-export-btn svg {
   width: 14px;
   height: 14px;
   fill: #535353;
 }
 
-.sb-conv-item:hover .sb-conv-delete-btn {
+.sb-conv-item:hover .sb-conv-delete-btn,
+.sb-conv-item:hover .sb-conv-export-btn {
   opacity: 1;
 }
 
 .sb-conv-delete-btn:hover svg {
   fill: #e74c3c;
+}
+
+.sb-conv-export-btn:hover svg {
+  fill: #1DB954;
 }
 
 /* Error display */

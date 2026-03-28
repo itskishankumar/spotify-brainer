@@ -418,6 +418,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // --- Execute a tool call against Spotify ---
 async function executeTool(toolName, input) {
+  // Special tool: get_track_credits — scrapes Spotify's credits dialog from the DOM
+  if (toolName === 'get_track_credits') {
+    const trackId = input.track_id || spotifyData.nowPlaying?.trackId;
+    const credits = await fetchTrackCredits(trackId);
+    if (credits) return { success: true, data: credits };
+    return { error: 'Could not scrape credits. Make sure a track is playing in Spotify.' };
+  }
+
   const mapping = TOOL_TO_ACTION[toolName];
   if (!mapping) {
     return { error: `Unknown tool: ${toolName}` };
@@ -623,6 +631,37 @@ async function handleTestConnection(msg) {
     return { success: false, error: e.message };
   }
 }
+
+// --- Track Credits (realtime, per song change) ---
+let creditsCache = {}; // trackId → credits object
+
+async function fetchTrackCredits(trackId, tabId) {
+  if (trackId && creditsCache[trackId]) {
+    return creditsCache[trackId];
+  }
+
+  // Ask the content script to scrape the credits dialog from the DOM
+  if (!tabId) {
+    // Try to find the Spotify tab
+    const tabs = await chrome.tabs.query({ url: 'https://open.spotify.com/*' });
+    if (tabs.length > 0) tabId = tabs[0].id;
+  }
+
+  if (!tabId) return null;
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'scrape-credits', trackId });
+    const credits = response?.credits;
+    if (credits && trackId) {
+      creditsCache[trackId] = credits;
+    }
+    return credits;
+  } catch (e) {
+    console.warn('[Spotify Brainer] Credits scrape failed:', e.message);
+    return null;
+  }
+}
+
 
 // --- Spotify data fetching (step-by-step with progress) ---
 

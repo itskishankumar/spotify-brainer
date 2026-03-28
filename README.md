@@ -10,12 +10,13 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Multi-provider LLM support** — Claude, OpenAI, Gemini (adapter-based, easy to extend)
 - **Full Spotify data extraction** — playlists with full track listings, saved library, top tracks/artists, recently played
 - **Playback control via LLM** — the AI can play/pause, skip, search, queue songs, create playlists, save tracks, and more using tool use
+- **Track credits lookup** — scrapes Spotify's credits dialog for any track (writers, producers, performers, engineers, label) via SPA navigation — no API needed
 - **Clickable song links** — every song the LLM mentions is a playable link
 - **Taste intelligence layer** — decade split, discovery score, personality tags, playlist profiles
 - **GDPR history import** — import your complete Spotify listening history for deep trend analysis
 - **Smart context compaction** — tiered system that preserves the most relevant data as conversations grow
 - **Streaming responses** with markdown rendering
-- **Conversation history** — multiple chats, persistent across sessions
+- **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
 - **Real-time now playing** — DOM scraper polls the player bar continuously
 - **Dark theme** matching Spotify's design language
@@ -68,7 +69,7 @@ spotify-brainer/
 ├── content/
 │   ├── inject.js              # Injects sidebar into Spotify DOM
 │   ├── inject.css             # Sidebar + layout styles
-│   └── spotify-scraper.js     # DOM scraping (now playing, current view)
+│   └── spotify-scraper.js     # DOM scraping (now playing, current view, track credits)
 ├── background/
 │   └── service-worker.js      # API proxy, data pipeline, context builder
 ├── llm/

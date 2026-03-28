@@ -238,6 +238,19 @@ export const SPOTIFY_TOOLS = [
       required: ['ids'],
     },
   },
+  {
+    name: 'get_track_credits',
+    description: 'Get the full credits for any track — artists, writers, producers, performers, engineers, and record label. IMPORTANT: Do NOT play the track first. This tool handles everything — it navigates to the track page internally, opens Spotify\'s credits dialog, scrapes the data, and navigates back. Just pass the track_id directly. For the currently playing track, omit track_id. For other tracks, use the search tool first to get the track ID, then pass it here. Tell the user you\'re briefly navigating to the track page to fetch credits.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        track_id: {
+          type: 'string',
+          description: 'Spotify track ID. If omitted, uses the currently playing track.',
+        },
+      },
+    },
+  },
 ];
 
 // Maps tool names to spotify-control action names and param transforms

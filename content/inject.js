@@ -17,6 +17,7 @@
     close: '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
     copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
+    export: '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
   };
 
   // --- Create toggle button ---
@@ -783,6 +784,34 @@
     if (showingConvList) renderConvList();
   });
 
+  function exportConversation(conv) {
+    const lines = [];
+    lines.push(`# ${conv.title}`);
+    lines.push(`Exported from Spotify Brainer on ${new Date().toLocaleDateString()}`);
+    lines.push('');
+
+    for (const msg of conv.messages) {
+      if (msg.role === 'user') {
+        lines.push(`## You`);
+        lines.push(msg.content);
+        lines.push('');
+      } else if (msg.role === 'assistant') {
+        lines.push(`## Spotify Brainer`);
+        lines.push(msg.content);
+        lines.push('');
+      }
+    }
+
+    const text = lines.join('\n');
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${conv.title.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'chat'}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function renderConvList() {
     // Filter out empty conversations
     const visible = conversations.filter((c) => c.messages.length > 0);
@@ -801,6 +830,7 @@
             <div class="sb-conv-item-title">${escapeHtml(c.title)}</div>
             <div class="sb-conv-item-date">${label}</div>
           </div>
+          <button class="sb-conv-export-btn" data-export-id="${c.id}" title="Export">${ICONS.export}</button>
           <button class="sb-conv-delete-btn" data-delete-id="${c.id}" title="Delete">${ICONS.trash}</button>
         </div>
       </div>`;
@@ -810,12 +840,21 @@
     // Click to switch
     convListEl.querySelectorAll('.sb-conv-item').forEach((el) => {
       el.addEventListener('click', (e) => {
-        // Don't switch if clicking delete
-        if (e.target.closest('.sb-conv-delete-btn')) return;
+        // Don't switch if clicking delete or export
+        if (e.target.closest('.sb-conv-delete-btn') || e.target.closest('.sb-conv-export-btn')) return;
         currentConvId = el.dataset.id;
         renderMessages();
         showingConvList = false;
         convListEl.classList.remove('open');
+      });
+    });
+
+    // Click to export
+    convListEl.querySelectorAll('.sb-conv-export-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const conv = conversations.find((c) => c.id === btn.dataset.exportId);
+        if (conv) exportConversation(conv);
       });
     });
 
@@ -1035,6 +1074,7 @@
       create_playlist: 'Creating playlist',
       save_tracks: 'Saving tracks',
       remove_saved_tracks: 'Removing tracks',
+      get_track_credits: 'Looking up credits',
     };
     return map[name] || name;
   }
@@ -1192,6 +1232,38 @@
     const innerType = e.data.type.replace(MSG_PREFIX, '');
     if (innerType === 'dom-data') {
       chrome.runtime.sendMessage({ type: 'spotify-dom-data', data: e.data.data });
+    }
+    if (innerType === 'credits-result') {
+      // Resolve the pending credits promise
+      if (pendingCreditsResolve) {
+        pendingCreditsResolve(e.data.data);
+        pendingCreditsResolve = null;
+      }
+    }
+  });
+
+  // Credits scraping bridge
+  let pendingCreditsResolve = null;
+
+  function requestCreditsScrape(trackId) {
+    return new Promise((resolve) => {
+      pendingCreditsResolve = resolve;
+      window.postMessage({ type: `${MSG_PREFIX}scrape-credits`, trackId: trackId || null }, '*');
+      // Timeout after 20s (navigation-based scraping can take longer)
+      setTimeout(() => {
+        if (pendingCreditsResolve) {
+          pendingCreditsResolve(null);
+          pendingCreditsResolve = null;
+        }
+      }, 20000);
+    });
+  }
+
+  // Listen for credits requests from service worker
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'scrape-credits') {
+      requestCreditsScrape(msg.trackId).then(credits => sendResponse({ credits }));
+      return true; // async response
     }
   });
 
