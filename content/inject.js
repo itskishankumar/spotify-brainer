@@ -247,6 +247,41 @@
   const dataViewerEl = document.getElementById('sb-data-viewer');
   const dataContentEl = document.getElementById('sb-data-content');
 
+  // Heatmap tooltip (floating, follows cursor)
+  const hmTooltip = document.createElement('div');
+  hmTooltip.style.cssText = 'display:none;position:fixed;background:#282828;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;pointer-events:none;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,.6);white-space:nowrap;';
+  document.body.appendChild(hmTooltip);
+
+  // Heatmap hover via event delegation (survives re-renders)
+  dataContentEl.addEventListener('mouseover', (e) => {
+    const cell = e.target.closest('.sb-hm');
+    if (!cell) return;
+    cell.style.transform = 'scale(1.4)';
+    cell.style.boxShadow = '0 0 6px rgba(29,185,84,.7)';
+    cell.style.zIndex = '1';
+    cell.style.position = 'relative';
+    hmTooltip.textContent = cell.dataset.tip;
+    hmTooltip.style.display = 'block';
+  });
+  dataContentEl.addEventListener('mousemove', (e) => {
+    if (hmTooltip.style.display === 'block') {
+      const tipWidth = hmTooltip.offsetWidth;
+      const spaceRight = window.innerWidth - e.clientX;
+      const left = spaceRight < tipWidth + 20 ? e.clientX - tipWidth - 12 : e.clientX + 12;
+      hmTooltip.style.left = left + 'px';
+      hmTooltip.style.top = (e.clientY - 32) + 'px';
+    }
+  });
+  dataContentEl.addEventListener('mouseout', (e) => {
+    const cell = e.target.closest('.sb-hm');
+    if (!cell) return;
+    cell.style.transform = '';
+    cell.style.boxShadow = '';
+    cell.style.zIndex = '';
+    cell.style.position = '';
+    hmTooltip.style.display = 'none';
+  });
+
   function showPanel(name) {
     activePanel = name;
     messagesEl.style.display = name === 'chat' ? 'flex' : 'none';
@@ -433,43 +468,232 @@
 
   function renderHistoryTab(d) {
     const hm = d.historyMetrics;
-    if (!hm?.lifetimeStats) return '<div class="sb-data-empty">No GDPR history imported yet.<br>Go to Settings to import your Extended Streaming History.</div>';
+    if (!hm?.lifetimeStats) return '<div class="sb-data-empty">No GDPR history imported yet.<br>Go to Settings to import your Streaming History.</div>';
     let html = '';
     const ls = hm.lifetimeStats;
 
+    // --- Lifetime Stats ---
     html += '<div class="sb-data-section"><h3 class="sb-data-heading">Lifetime Stats</h3>';
-    html += dataRow('Total plays', ls.totalPlays?.toLocaleString());
+    html += dataRow('Total plays', ls.totalPlays?.toLocaleString() + (ls.totalEvents !== ls.totalPlays ? ` (of ${ls.totalEvents?.toLocaleString()} events)` : ''));
     html += dataRow('Unique tracks', ls.uniqueTracks?.toLocaleString());
     html += dataRow('Unique artists', ls.uniqueArtists?.toLocaleString());
     html += dataRow('Years of data', ls.totalYears);
     html += dataRow('Total listening', Math.round((ls.totalMs || 0) / 3600000).toLocaleString() + ' hours');
-    if (ls.topArtistAllTime) html += dataRow('Top artist', ls.topArtistAllTime.name + ' (' + ls.topArtistAllTime.plays + ' plays)');
-    if (ls.topTrackAllTime) html += dataRow('Top track', ls.topTrackAllTime.name + ' (' + ls.topTrackAllTime.plays + ' plays)');
+    if (ls.topArtistAllTime) html += dataRow('Top artist', ls.topArtistAllTime.name + ' (' + ls.topArtistAllTime.plays.toLocaleString() + ' plays)');
+    if (ls.topTrackAllTime) html += dataRow('Top track', ls.topTrackAllTime.name + ' (' + ls.topTrackAllTime.plays.toLocaleString() + ' plays)');
     html += '</div>';
 
+    // --- Listening Engagement ---
+    if (hm.listeningEngagement) {
+      const le = hm.listeningEngagement;
+      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Listening Engagement</h3>';
+      html += dataRow('Avg listen duration', Math.round(le.avgMsPlayed / 1000) + 's');
+      html += dataRow('Completion rate', le.completionRate + '%');
+      html += dataRow('Micro-plays (<10s)', le.microPlays.toLocaleString() + ` (${le.microPlaysPct}%)`);
+      html += dataRow('Deep listens (>5min)', le.deepListens.toLocaleString() + ` (${le.deepListensPct}%)`);
+      html += '</div>';
+    }
+
+    // --- Artist Relationships ---
+    if (hm.artistRelationships) {
+      const ar = hm.artistRelationships;
+      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Artist Relationships</h3>';
+      html += dataRow('Top 10 loyalty', ar.loyaltyScore + '% of listening time');
+      html += dataRow('Concentration (Gini)', ar.giniCoefficient);
+      html += dataRow('One-listen artists', ar.oneListenArtists.toLocaleString() + ` (${ar.oneListenArtistsPct}%)`);
+      html += '</div>';
+
+      if (ar.artistLifecycles?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Top Artist Lifecycles</h3>';
+        for (const a of ar.artistLifecycles.slice(0, 10)) {
+          html += '<div class="sb-data-list-item">';
+          html += `<div class="sb-data-list-title">${escapeHtml(a.name)} <span style="color:#888;font-weight:400;">(${a.totalPlays.toLocaleString()} plays)</span></div>`;
+          html += `<div class="sb-data-list-meta">Discovered ${a.firstPlay} · Peak ${a.peakMonth} (${a.peakMonthPlays} plays) · Last ${a.lastPlay}</div>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      if (ar.monthlyNewArtists?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Discovery Rate</h3>';
+        html += '<div class="sb-data-list-meta" style="margin-bottom:6px;">New artists discovered per month</div>';
+        for (const m of ar.monthlyNewArtists) {
+          const barWidth = Math.min(100, Math.round(m.count / Math.max(...ar.monthlyNewArtists.map((x) => x.count)) * 100));
+          html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px;">`;
+          html += `<span style="color:#b3b3b3;width:60px;flex-shrink:0;">${m.month}</span>`;
+          html += `<div style="flex:1;background:#282828;border-radius:3px;height:14px;"><div style="width:${barWidth}%;background:#1db954;height:100%;border-radius:3px;"></div></div>`;
+          html += `<span style="color:#888;width:30px;text-align:right;">${m.count}</span>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    // --- Temporal Behavior ---
+    if (hm.temporalBehavior) {
+      const tb = hm.temporalBehavior;
+      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Temporal Behavior</h3>';
+      html += dataRow('Peak hour', tb.peakHour + ':00');
+      html += dataRow('Peak day', tb.peakDay);
+      html += dataRow('Night owl score', tb.nightOwlPct + '% (midnight–5am)');
+      html += '</div>';
+
+      if (tb.sessions) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Sessions</h3>';
+        html += dataRow('Total sessions', tb.sessions.total.toLocaleString());
+        html += dataRow('Avg session', tb.sessions.avgDurationMin + ' min · ' + tb.sessions.avgTracksPerSession + ' tracks');
+        html += dataRow('Sessions per week', tb.sessions.sessionsPerWeek);
+        if (tb.sessions.longestSession) {
+          const ls2 = tb.sessions.longestSession;
+          html += dataRow('Longest session', ls2.durationMin + ' min · ' + ls2.tracks + ' tracks · ' + ls2.date);
+        }
+        html += '</div>';
+      }
+
+      if (tb.weekdayVsWeekend) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Weekday vs Weekend</h3>';
+        html += dataRow('Weekday avg', tb.weekdayVsWeekend.weekday.avgHoursPerDay + ' hrs/day · ' + tb.weekdayVsWeekend.weekday.uniqueArtists + ' artists');
+        html += dataRow('Weekend avg', tb.weekdayVsWeekend.weekend.avgHoursPerDay + ' hrs/day · ' + tb.weekdayVsWeekend.weekend.uniqueArtists + ' artists');
+        html += '</div>';
+      }
+
+      // Heatmap
+      if (tb.heatmap) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Listening Heatmap</h3>';
+        const maxVal = Math.max(...tb.heatmap.flat());
+        const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        html += '<div style="display:grid;grid-template-columns:36px repeat(24, 1fr);gap:2px;max-width:100%;">';
+        // Header row
+        html += '<div></div>';
+        for (let h = 0; h < 24; h++) {
+          const ampm = h < 12 ? 'AM' : 'PM';
+          const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+          html += `<div style="color:#888;text-align:center;font-size:8px;line-height:14px;">${h % 3 === 0 ? h12 + ampm : ''}</div>`;
+        }
+        // Data rows
+        for (let d = 0; d < 7; d++) {
+          html += `<div style="color:#888;font-size:10px;line-height:14px;display:flex;align-items:center;">${dayLabels[d]}</div>`;
+          for (let h = 0; h < 24; h++) {
+            const val = tb.heatmap[d][h];
+            const intensity = maxVal > 0 ? val / maxVal : 0;
+            const bg = intensity === 0 ? '#1a1a1a' : `rgba(29, 185, 84, ${0.15 + intensity * 0.85})`;
+            const tipH = h === 0 ? 12 : h > 12 ? h - 12 : h;
+            const tipAP = h < 12 ? 'AM' : 'PM';
+            html += `<div class="sb-hm" data-tip="${dayLabels[d]} ${tipH}:00 ${tipAP} — ${val} plays" style="background:${bg};height:14px;border-radius:2px;cursor:crosshair;"></div>`;
+          }
+        }
+        html += '</div></div>';
+      }
+
+      // Monthly hours trend
+      if (tb.monthlyHours?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Monthly Listening</h3>';
+        const maxHrs = Math.max(...tb.monthlyHours.map((m) => m.hours));
+        for (const m of tb.monthlyHours) {
+          const barWidth = Math.min(100, Math.round(m.hours / maxHrs * 100));
+          html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px;">`;
+          html += `<span style="color:#b3b3b3;width:60px;flex-shrink:0;">${m.month}</span>`;
+          html += `<div style="flex:1;background:#282828;border-radius:3px;height:14px;"><div style="width:${barWidth}%;background:#1db954;height:100%;border-radius:3px;"></div></div>`;
+          html += `<span style="color:#888;width:50px;text-align:right;">${m.hours}h</span>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    // --- Replay & Obsession ---
+    if (hm.replayObsession) {
+      const ro = hm.replayObsession;
+      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Replay & Obsession</h3>';
+      html += dataRow('24hr repeat ratio', ro.repeatRatio + '%');
+      html += dataRow('One-and-done tracks', ro.oneAndDoneTracks.toLocaleString() + ` (${ro.oneAndDonePct}%)`);
+      html += dataRow('Repeat favorites (5+)', ro.repeatFavorites.toLocaleString() + ` (${ro.repeatFavoritesPct}%)`);
+      html += dataRow('Binge episodes (5+ in a row)', ro.totalBingeEpisodes.toLocaleString());
+      html += '</div>';
+
+      if (ro.bingeEpisodes?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Top Binge Sessions</h3>';
+        for (const b of ro.bingeEpisodes.slice(0, 10)) {
+          html += '<div class="sb-data-list-item">';
+          html += `<div class="sb-data-list-title">${escapeHtml(b.artist)}</div>`;
+          html += `<div class="sb-data-list-meta">${b.tracks} tracks in a row · ${b.date}</div>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    // --- Streaks & Records ---
+    if (hm.streaksRecords) {
+      const sr = hm.streaksRecords;
+      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Streaks & Records</h3>';
+      html += dataRow('Longest daily streak', sr.longestDailyStreak.days + ' days (ending ' + sr.longestDailyStreak.endDate + ')');
+      html += dataRow('Total active days', sr.totalActiveDays.toLocaleString());
+      if (sr.mostPlaysInDay) html += dataRow('Most plays in a day', sr.mostPlaysInDay.plays + ' plays · ' + sr.mostPlaysInDay.hoursListened + 'h · ' + sr.mostPlaysInDay.date);
+      if (sr.mostDiverseDay) html += dataRow('Most diverse day', sr.mostDiverseDay.uniqueArtists + ' artists · ' + sr.mostDiverseDay.date);
+      if (sr.longestGap) html += dataRow('Longest gap', sr.longestGap.days + ' days (' + sr.longestGap.from + ' → ' + sr.longestGap.to + ')');
+      html += '</div>';
+    }
+
+    // --- Taste Profile ---
+    if (hm.tasteProfile) {
+      const tp = hm.tasteProfile;
+
+      if (tp.concentration) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Artist Concentration</h3>';
+        html += dataRow('Top 1% of artists', `${tp.concentration.top1PctArtists} artists → ${tp.concentration.top1PctSharePct}% of plays`);
+        html += dataRow('Top 10% of artists', `${tp.concentration.top10PctArtists} artists → ${tp.concentration.top10PctSharePct}% of plays`);
+        html += '</div>';
+      }
+
+      if (tp.monthlyTopArtist?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Monthly #1 Artist</h3>';
+        for (const m of tp.monthlyTopArtist) {
+          html += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;">`;
+          html += `<span style="color:#b3b3b3;">${m.month}</span>`;
+          html += `<span style="color:#fff;">${escapeHtml(m.artist)} <span style="color:#888;">(${m.plays})</span></span>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      if (tp.monthlyVariety?.length) {
+        html += '<div class="sb-data-section"><h3 class="sb-data-heading">Monthly Variety Score</h3>';
+        html += '<div class="sb-data-list-meta" style="margin-bottom:6px;">Unique artists / total plays (higher = more variety)</div>';
+        const maxVar = Math.max(...tp.monthlyVariety.map((m) => m.varietyScore));
+        for (const m of tp.monthlyVariety) {
+          const barWidth = maxVar > 0 ? Math.min(100, Math.round(m.varietyScore / maxVar * 100)) : 0;
+          html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px;">`;
+          html += `<span style="color:#b3b3b3;width:60px;flex-shrink:0;">${m.month}</span>`;
+          html += `<div style="flex:1;background:#282828;border-radius:3px;height:14px;"><div style="width:${barWidth}%;background:#1db954;height:100%;border-radius:3px;"></div></div>`;
+          html += `<span style="color:#888;width:36px;text-align:right;">${m.varietyScore}</span>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    // --- Taste Evolution ---
     if (hm.tasteEvolution?.length) {
       html += '<div class="sb-data-section"><h3 class="sb-data-heading">Taste Evolution</h3>';
       for (const era of hm.tasteEvolution) {
         html += '<div class="sb-data-list-item">';
-        html += '<div class="sb-data-list-title">' + era.period + '</div>';
-        html += '<div class="sb-data-list-meta">' + escapeHtml(era.description) + '</div>';
+        html += `<div class="sb-data-list-title">${era.period} <span style="color:#888;font-weight:400;">${era.plays?.toLocaleString()} plays · ${era.hours}h</span></div>`;
+        if (era.topArtists) {
+          html += '<div class="sb-data-list-meta">' + era.topArtists.map((a) => `${escapeHtml(a.name)} (${a.plays})`).join(', ') + '</div>';
+        } else {
+          html += '<div class="sb-data-list-meta">' + escapeHtml(era.description) + '</div>';
+        }
         html += '</div>';
       }
       html += '</div>';
     }
 
+    // --- Recent Trends ---
     if (hm.recentTrends?.length) {
       html += '<div class="sb-data-section"><h3 class="sb-data-heading">Recent Trends</h3>';
       for (const trend of hm.recentTrends) {
         html += '<div class="sb-data-list-item"><div class="sb-data-list-meta">' + escapeHtml(trend) + '</div></div>';
-      }
-      html += '</div>';
-    }
-
-    if (hm.behavioralPatterns?.length) {
-      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Behavioral Patterns</h3>';
-      for (const p of hm.behavioralPatterns) {
-        html += '<div class="sb-data-list-item"><div class="sb-data-list-meta">' + escapeHtml(p) + '</div></div>';
       }
       html += '</div>';
     }

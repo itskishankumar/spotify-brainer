@@ -1107,33 +1107,82 @@ async function computeHistoryMetrics() {
     allEvents.sort((a, b) => a.timestamp - b.timestamp);
 
     const metrics = {};
+    const STREAM_THRESHOLD_MS = 30000; // 30s = Spotify's official stream threshold
+    const TYPICAL_SONG_MS = 210000; // 3.5 min average song length
+    const SESSION_GAP_MS = 30 * 60000; // 30 min gap = new session
 
-    // Lifetime stats
+    // Helper: track key for deduplication
+    const trackKey = (e) => e.trackUri || (e.trackName && e.artistName ? `${e.trackName}|||${e.artistName}` : '');
+
+    // --- Pre-compute common aggregates ---
+    const meaningfulPlays = allEvents.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS);
     const totalMs = allEvents.reduce((sum, e) => sum + (e.msPlayed || 0), 0);
-    const uniqueTracks = new Set(allEvents.map((e) => e.trackUri || (e.trackName && e.artistName ? `${e.trackName}|||${e.artistName}` : '')).filter(Boolean));
+    const uniqueTracks = new Set(allEvents.map(trackKey).filter(Boolean));
     const uniqueArtists = new Set(allEvents.map((e) => e.artistName).filter(Boolean));
     const firstEvent = allEvents[0];
     const lastEvent = allEvents[allEvents.length - 1];
     const totalYears = ((lastEvent.timestamp - firstEvent.timestamp) / (365.25 * 24 * 3600000)).toFixed(1);
 
-    // Most played artist
+    // Artist play counts (meaningful plays only)
     const artistPlays = {};
-    for (const e of allEvents) {
-      if (e.artistName) artistPlays[e.artistName] = (artistPlays[e.artistName] || 0) + 1;
+    const artistMs = {};
+    for (const e of meaningfulPlays) {
+      if (e.artistName) {
+        artistPlays[e.artistName] = (artistPlays[e.artistName] || 0) + 1;
+        artistMs[e.artistName] = (artistMs[e.artistName] || 0) + (e.msPlayed || 0);
+      }
     }
-    const topArtist = Object.entries(artistPlays).sort((a, b) => b[1] - a[1])[0];
+    const sortedArtists = Object.entries(artistPlays).sort((a, b) => b[1] - a[1]);
+    const topArtist = sortedArtists[0];
 
-    // Most played track
+    // Track play counts (meaningful plays only)
     const trackPlays = {};
-    for (const e of allEvents) {
+    for (const e of meaningfulPlays) {
       const key = `${e.trackName} — ${e.artistName}`;
       if (e.trackName) trackPlays[key] = (trackPlays[key] || 0) + 1;
     }
     const topTrack = Object.entries(trackPlays).sort((a, b) => b[1] - a[1])[0];
 
+    // By-date grouping
+    const byDate = {};
+    const byMonth = {};
+    const byYear = {};
+    for (const e of allEvents) {
+      const d = new Date(e.timestamp);
+      const dateStr = d.toISOString().slice(0, 10);
+      const monthStr = d.toISOString().slice(0, 7);
+      const year = d.getFullYear();
+      if (!byDate[dateStr]) byDate[dateStr] = [];
+      byDate[dateStr].push(e);
+      if (!byMonth[monthStr]) byMonth[monthStr] = [];
+      byMonth[monthStr].push(e);
+      if (!byYear[year]) byYear[year] = [];
+      byYear[year].push(e);
+    }
+
+    // Hour/day matrices
+    const hourCounts = new Array(24).fill(0);
+    const dayCounts = new Array(7).fill(0);
+    const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    let nightOwlCount = 0;
+    for (const e of allEvents) {
+      if ((e.msPlayed || 0) < STREAM_THRESHOLD_MS) continue; // only count meaningful plays
+      const d = new Date(e.timestamp);
+      const hour = d.getHours();
+      const day = d.getDay();
+      hourCounts[hour]++;
+      dayCounts[day]++;
+      heatmap[day][hour]++;
+      if (hour >= 0 && hour < 5) nightOwlCount++;
+    }
+
+    // ============================
+    // 1. LIFETIME STATS
+    // ============================
     metrics.lifetimeStats = {
       totalMs,
-      totalPlays: allEvents.length,
+      totalEvents: allEvents.length,
+      totalPlays: meaningfulPlays.length,
       uniqueTracks: uniqueTracks.size,
       uniqueArtists: uniqueArtists.size,
       totalYears,
@@ -1141,30 +1190,355 @@ async function computeHistoryMetrics() {
       topTrackAllTime: topTrack ? { name: topTrack[0], plays: topTrack[1] } : null,
     };
 
-    // Taste evolution by year
-    const byYear = {};
-    for (const e of allEvents) {
-      const year = new Date(e.timestamp).getFullYear();
-      if (!byYear[year]) byYear[year] = [];
-      byYear[year].push(e);
+    // ============================
+    // 2. LISTENING ENGAGEMENT
+    // ============================
+    const avgMsPlayed = totalMs / allEvents.length;
+    const completionRate = Math.min(1, avgMsPlayed / TYPICAL_SONG_MS);
+    const microPlays = allEvents.filter((e) => (e.msPlayed || 0) < 10000).length;
+    const deepListens = allEvents.filter((e) => (e.msPlayed || 0) > 300000).length;
+
+    metrics.listeningEngagement = {
+      avgMsPlayed: Math.round(avgMsPlayed),
+      completionRate: Math.round(completionRate * 100),
+      microPlays,
+      microPlaysPct: Math.round(microPlays / allEvents.length * 100),
+      deepListens,
+      deepListensPct: Math.round(deepListens / allEvents.length * 100),
+    };
+
+    // ============================
+    // 3. ARTIST RELATIONSHIPS
+    // ============================
+
+    // Loyalty: % of listening time to top 10 artists
+    const top10Ms = sortedArtists.slice(0, 10).reduce((sum, [name]) => sum + (artistMs[name] || 0), 0);
+    const loyaltyScore = Math.round(top10Ms / totalMs * 100);
+
+    // Gini coefficient of artist plays
+    const artistPlayValues = Object.values(artistPlays).sort((a, b) => a - b);
+    let giniNum = 0;
+    const n = artistPlayValues.length;
+    for (let i = 0; i < n; i++) {
+      giniNum += (2 * (i + 1) - n - 1) * artistPlayValues[i];
+    }
+    const giniCoeff = n > 0 ? (giniNum / (n * artistPlayValues.reduce((s, v) => s + v, 0))).toFixed(3) : 0;
+
+    // One-listen artists
+    const oneListenArtists = sortedArtists.filter(([, c]) => c === 1).length;
+
+    // Artist lifecycles (top 20 artists)
+    const artistLifecycles = [];
+    for (const [artist] of sortedArtists.slice(0, 20)) {
+      const artistEvents = allEvents.filter((e) => e.artistName === artist);
+      const monthlyPlays = {};
+      for (const e of artistEvents) {
+        const m = new Date(e.timestamp).toISOString().slice(0, 7);
+        monthlyPlays[m] = (monthlyPlays[m] || 0) + 1;
+      }
+      const peakMonth = Object.entries(monthlyPlays).sort((a, b) => b[1] - a[1])[0];
+      artistLifecycles.push({
+        name: artist,
+        totalPlays: artistPlays[artist],
+        firstPlay: new Date(artistEvents[0].timestamp).toISOString().slice(0, 10),
+        lastPlay: new Date(artistEvents[artistEvents.length - 1].timestamp).toISOString().slice(0, 10),
+        peakMonth: peakMonth ? peakMonth[0] : null,
+        peakMonthPlays: peakMonth ? peakMonth[1] : 0,
+      });
     }
 
-    metrics.tasteEvolution = Object.entries(byYear)
+    // Monthly new artist discovery rate
+    const seenArtists = new Set();
+    const monthlyNewArtists = {};
+    for (const e of allEvents) {
+      if (!e.artistName) continue;
+      const m = new Date(e.timestamp).toISOString().slice(0, 7);
+      if (!seenArtists.has(e.artistName)) {
+        seenArtists.add(e.artistName);
+        monthlyNewArtists[m] = (monthlyNewArtists[m] || 0) + 1;
+      }
+    }
+
+    metrics.artistRelationships = {
+      loyaltyScore,
+      giniCoefficient: parseFloat(giniCoeff),
+      oneListenArtists,
+      oneListenArtistsPct: Math.round(oneListenArtists / uniqueArtists.size * 100),
+      artistLifecycles,
+      monthlyNewArtists: Object.entries(monthlyNewArtists).sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([month, count]) => ({ month, count })),
+    };
+
+    // ============================
+    // 4. TEMPORAL BEHAVIOR
+    // ============================
+
+    // Sessions: gap > 30 min = new session
+    const sessions = [];
+    let sessionStart = allEvents[0].timestamp;
+    let sessionMs = allEvents[0].msPlayed || 0;
+    let sessionCount = 1;
+    for (let i = 1; i < allEvents.length; i++) {
+      const gap = allEvents[i].timestamp - allEvents[i - 1].timestamp;
+      if (gap > SESSION_GAP_MS) {
+        sessions.push({ start: sessionStart, durationMs: sessionMs, tracks: sessionCount });
+        sessionStart = allEvents[i].timestamp;
+        sessionMs = 0;
+        sessionCount = 0;
+      }
+      sessionMs += allEvents[i].msPlayed || 0;
+      sessionCount++;
+    }
+    sessions.push({ start: sessionStart, durationMs: sessionMs, tracks: sessionCount });
+
+    const avgSessionMs = sessions.reduce((s, sess) => s + sess.durationMs, 0) / sessions.length;
+    const longestSession = sessions.reduce((max, sess) => sess.durationMs > max.durationMs ? sess : max, sessions[0]);
+
+    // Night owl score
+    const nightOwlPct = Math.round(nightOwlCount / allEvents.length * 100);
+
+    // Weekend vs weekday
+    const weekdayEvents = allEvents.filter((e) => { const d = new Date(e.timestamp).getDay(); return d >= 1 && d <= 5; });
+    const weekendEvents = allEvents.filter((e) => { const d = new Date(e.timestamp).getDay(); return d === 0 || d === 6; });
+    const weekdayMs = weekdayEvents.reduce((s, e) => s + (e.msPlayed || 0), 0);
+    const weekendMs = weekendEvents.reduce((s, e) => s + (e.msPlayed || 0), 0);
+    const weekdayUniqueArtists = new Set(weekdayEvents.map((e) => e.artistName).filter(Boolean)).size;
+    const weekendUniqueArtists = new Set(weekendEvents.map((e) => e.artistName).filter(Boolean)).size;
+
+    // Monthly listening hours trend
+    const monthlyHours = Object.entries(byMonth)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, events]) => ({
+        month,
+        hours: Math.round(events.reduce((s, e) => s + (e.msPlayed || 0), 0) / 3600000 * 10) / 10,
+        plays: events.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS).length,
+      }));
+
+    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const peakDay = dayCounts.indexOf(Math.max(...dayCounts));
+
+    metrics.temporalBehavior = {
+      peakHour,
+      peakDay: dayNames[peakDay],
+      heatmap, // 7x24 matrix [day][hour]
+      nightOwlPct,
+      sessions: {
+        total: sessions.length,
+        avgDurationMin: Math.round(avgSessionMs / 60000),
+        avgTracksPerSession: Math.round(allEvents.length / sessions.length),
+        longestSession: {
+          date: new Date(longestSession.start).toISOString().slice(0, 10),
+          durationMin: Math.round(longestSession.durationMs / 60000),
+          tracks: longestSession.tracks,
+        },
+        sessionsPerWeek: Math.round(sessions.length / (parseFloat(totalYears) * 52.18) * 10) / 10,
+      },
+      weekdayVsWeekend: {
+        weekday: { avgHoursPerDay: Math.round(weekdayMs / 3600000 / Math.max(1, Object.keys(byDate).filter((d) => { const day = new Date(d).getDay(); return day >= 1 && day <= 5; }).length) * 10) / 10, uniqueArtists: weekdayUniqueArtists },
+        weekend: { avgHoursPerDay: Math.round(weekendMs / 3600000 / Math.max(1, Object.keys(byDate).filter((d) => { const day = new Date(d).getDay(); return day === 0 || day === 6; }).length) * 10) / 10, uniqueArtists: weekendUniqueArtists },
+      },
+      monthlyHours,
+    };
+
+    // ============================
+    // 5. REPLAY & OBSESSION
+    // ============================
+
+    // Repeat ratio: same track played again within 24hrs
+    let repeatCount = 0;
+    const recentTrackTimestamps = {};
+    for (const e of allEvents) {
+      const key = trackKey(e);
+      if (!key) continue;
+      if (recentTrackTimestamps[key] && (e.timestamp - recentTrackTimestamps[key]) < 24 * 3600000) {
+        repeatCount++;
+      }
+      recentTrackTimestamps[key] = e.timestamp;
+    }
+    const repeatRatio = Math.round(repeatCount / allEvents.length * 100);
+
+    // Binge episodes: 5+ consecutive plays of same artist
+    const bingeEpisodes = [];
+    let bingeArtist = null;
+    let bingeStart = 0;
+    let bingeCount = 0;
+    for (let i = 0; i < allEvents.length; i++) {
+      if (allEvents[i].artistName === bingeArtist) {
+        bingeCount++;
+      } else {
+        if (bingeCount >= 5) {
+          bingeEpisodes.push({
+            artist: bingeArtist,
+            tracks: bingeCount,
+            date: new Date(allEvents[bingeStart].timestamp).toISOString().slice(0, 10),
+          });
+        }
+        bingeArtist = allEvents[i].artistName;
+        bingeStart = i;
+        bingeCount = 1;
+      }
+    }
+    if (bingeCount >= 5) {
+      bingeEpisodes.push({ artist: bingeArtist, tracks: bingeCount, date: new Date(allEvents[bingeStart].timestamp).toISOString().slice(0, 10) });
+    }
+
+    // One-and-done tracks vs repeat favorites
+    const trackPlayCounts = {};
+    for (const e of meaningfulPlays) {
+      const key = trackKey(e);
+      if (key) trackPlayCounts[key] = (trackPlayCounts[key] || 0) + 1;
+    }
+    const oneAndDoneTracks = Object.values(trackPlayCounts).filter((c) => c === 1).length;
+    const repeatFavorites = Object.values(trackPlayCounts).filter((c) => c >= 5).length;
+
+    metrics.replayObsession = {
+      repeatRatio,
+      bingeEpisodes: bingeEpisodes.sort((a, b) => b.tracks - a.tracks).slice(0, 20),
+      totalBingeEpisodes: bingeEpisodes.length,
+      oneAndDoneTracks,
+      oneAndDonePct: Math.round(oneAndDoneTracks / Math.max(1, Object.keys(trackPlayCounts).length) * 100),
+      repeatFavorites,
+      repeatFavoritesPct: Math.round(repeatFavorites / Math.max(1, Object.keys(trackPlayCounts).length) * 100),
+    };
+
+    // ============================
+    // 6. STREAKS & RECORDS
+    // ============================
+
+    // Daily streak: consecutive days with at least 1 play
+    const sortedDates = Object.keys(byDate).sort();
+    let maxStreak = 1;
+    let currentStreak = 1;
+    let streakEndDate = sortedDates[0];
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prev = new Date(sortedDates[i - 1]);
+      const curr = new Date(sortedDates[i]);
+      const diffDays = (curr - prev) / (24 * 3600000);
+      if (diffDays === 1) {
+        currentStreak++;
+        if (currentStreak > maxStreak) {
+          maxStreak = currentStreak;
+          streakEndDate = sortedDates[i];
+        }
+      } else {
+        currentStreak = 1;
+      }
+    }
+
+    // Most plays in a single day
+    const dayPlayCounts = Object.entries(byDate).map(([date, events]) => ({
+      date,
+      plays: events.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS).length,
+      totalEvents: events.length,
+      hoursListened: Math.round(events.reduce((s, e) => s + (e.msPlayed || 0), 0) / 3600000 * 10) / 10,
+    }));
+    const mostPlaysDay = dayPlayCounts.sort((a, b) => b.plays - a.plays)[0];
+
+    // Most diverse day (most unique artists)
+    const dayDiversity = Object.entries(byDate).map(([date, events]) => ({
+      date,
+      uniqueArtists: new Set(events.map((e) => e.artistName).filter(Boolean)).size,
+    }));
+    const mostDiverseDay = dayDiversity.sort((a, b) => b.uniqueArtists - a.uniqueArtists)[0];
+
+    // Longest gap between plays
+    let maxGap = 0;
+    let gapStart = 0;
+    let gapEnd = 0;
+    for (let i = 1; i < allEvents.length; i++) {
+      const gap = allEvents[i].timestamp - allEvents[i - 1].timestamp;
+      if (gap > maxGap) {
+        maxGap = gap;
+        gapStart = allEvents[i - 1].timestamp;
+        gapEnd = allEvents[i].timestamp;
+      }
+    }
+
+    metrics.streaksRecords = {
+      longestDailyStreak: { days: maxStreak, endDate: streakEndDate },
+      totalActiveDays: sortedDates.length,
+      mostPlaysInDay: mostPlaysDay,
+      mostDiverseDay,
+      longestGap: {
+        days: Math.round(maxGap / (24 * 3600000) * 10) / 10,
+        from: new Date(gapStart).toISOString().slice(0, 10),
+        to: new Date(gapEnd).toISOString().slice(0, 10),
+      },
+    };
+
+    // ============================
+    // 7. TASTE PROFILE
+    // ============================
+
+    // Monthly top artist timeline
+    const monthlyTopArtist = Object.entries(byMonth)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, events]) => {
+        const ma = {};
+        for (const e of events) {
+          if (e.artistName && (e.msPlayed || 0) >= STREAM_THRESHOLD_MS) {
+            ma[e.artistName] = (ma[e.artistName] || 0) + 1;
+          }
+        }
+        const top = Object.entries(ma).sort((a, b) => b[1] - a[1])[0];
+        return { month, artist: top ? top[0] : 'N/A', plays: top ? top[1] : 0 };
+      });
+
+    // Artist concentration curve
+    const totalMeaningfulPlays = meaningfulPlays.length;
+    const top1PctCount = Math.max(1, Math.ceil(sortedArtists.length * 0.01));
+    const top10PctCount = Math.max(1, Math.ceil(sortedArtists.length * 0.10));
+    const top1PctPlays = sortedArtists.slice(0, top1PctCount).reduce((s, [, c]) => s + c, 0);
+    const top10PctPlays = sortedArtists.slice(0, top10PctCount).reduce((s, [, c]) => s + c, 0);
+
+    // Variety score per month (unique artists / total plays)
+    const monthlyVariety = Object.entries(byMonth)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, events]) => {
+        const plays = events.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS).length;
+        const artists = new Set(events.map((e) => e.artistName).filter(Boolean)).size;
+        return { month, varietyScore: plays > 0 ? Math.round(artists / plays * 100) / 100 : 0, uniqueArtists: artists, plays };
+      });
+
+    // Taste evolution by year (updated to use meaningful plays)
+    const tasteEvolution = Object.entries(byYear)
       .sort((a, b) => a[0] - b[0])
       .map(([year, events]) => {
         const yearArtists = {};
         for (const e of events) {
-          if (e.artistName) yearArtists[e.artistName] = (yearArtists[e.artistName] || 0) + 1;
+          if (e.artistName && (e.msPlayed || 0) >= STREAM_THRESHOLD_MS) {
+            yearArtists[e.artistName] = (yearArtists[e.artistName] || 0) + 1;
+          }
         }
         const topYearArtists = Object.entries(yearArtists).sort((a, b) => b[1] - a[1]).slice(0, 5);
-        const skipRate = events.filter((e) => e.skipped).length / events.length;
+        const yearPlays = events.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS).length;
+        const yearHrs = Math.round(events.reduce((s, e) => s + (e.msPlayed || 0), 0) / 3600000);
         return {
           period: year,
-          description: `Top artists: ${topYearArtists.map((a) => a[0]).join(', ')} | ${events.length} plays | ${Math.round(skipRate * 100)}% skip rate`,
+          topArtists: topYearArtists.map(([name, plays]) => ({ name, plays })),
+          plays: yearPlays,
+          hours: yearHrs,
+          description: `Top artists: ${topYearArtists.map((a) => a[0]).join(', ')} | ${yearPlays} plays | ${yearHrs} hrs`,
         };
       });
 
-    // Recent trends (last 30 days)
+    metrics.tasteProfile = {
+      monthlyTopArtist,
+      concentration: {
+        top1PctArtists: top1PctCount,
+        top1PctSharePct: Math.round(top1PctPlays / totalMeaningfulPlays * 100),
+        top10PctArtists: top10PctCount,
+        top10PctSharePct: Math.round(top10PctPlays / totalMeaningfulPlays * 100),
+      },
+      monthlyVariety,
+    };
+
+    metrics.tasteEvolution = tasteEvolution;
+
+    // ============================
+    // LEGACY: Recent trends & behavioral patterns (kept for backward compat)
+    // ============================
     const thirtyDaysAgo = Date.now() - 30 * 24 * 3600000;
     const recentEvents = allEvents.filter((e) => e.timestamp > thirtyDaysAgo);
     const sixtyDaysAgo = Date.now() - 60 * 24 * 3600000;
@@ -1175,13 +1549,8 @@ async function computeHistoryMetrics() {
       const recentMs = recentEvents.reduce((s, e) => s + (e.msPlayed || 0), 0);
       const recentHrs = (recentMs / 3600000).toFixed(1);
       metrics.recentTrends.push(`Listening: ${recentHrs} hrs this month`);
-
       const recentUniqueArtists = new Set(recentEvents.map((e) => e.artistName).filter(Boolean));
       metrics.recentTrends.push(`Discovery: ${recentUniqueArtists.size} unique artists`);
-
-      const recentSkipRate = recentEvents.filter((e) => e.skipped).length / recentEvents.length;
-      metrics.recentTrends.push(`Skip rate: ${Math.round(recentSkipRate * 100)}%`);
-
       if (prevMonthEvents.length) {
         const prevMs = prevMonthEvents.reduce((s, e) => s + (e.msPlayed || 0), 0);
         const change = ((recentMs - prevMs) / prevMs * 100).toFixed(0);
@@ -1189,44 +1558,19 @@ async function computeHistoryMetrics() {
       }
     }
 
-    // Behavioral patterns
     metrics.behavioralPatterns = [];
     const platformCounts = {};
-    const hourCounts = new Array(24).fill(0);
-    const dayCounts = new Array(7).fill(0);
     let shuffleCount = 0;
-
     for (const e of allEvents) {
       if (e.platform) platformCounts[e.platform] = (platformCounts[e.platform] || 0) + 1;
-      const d = new Date(e.timestamp);
-      hourCounts[d.getHours()]++;
-      dayCounts[d.getDay()]++;
       if (e.shuffle) shuffleCount++;
     }
-
-    // Platform breakdown
     const topPlatforms = Object.entries(platformCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
     if (topPlatforms.length) {
-      metrics.behavioralPatterns.push(
-        `Platforms: ${topPlatforms.map(([p, c]) => `${p} (${Math.round(c / allEvents.length * 100)}%)`).join(', ')}`
-      );
+      metrics.behavioralPatterns.push(`Platforms: ${topPlatforms.map(([p, c]) => `${p} (${Math.round(c / allEvents.length * 100)}%)`).join(', ')}`);
     }
-
-    // Peak hours
-    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
     metrics.behavioralPatterns.push(`Peak listening hour: ${peakHour}:00`);
-
-    // Peak day
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const peakDay = dayCounts.indexOf(Math.max(...dayCounts));
     metrics.behavioralPatterns.push(`Most active day: ${dayNames[peakDay]}`);
-
-    // Shuffle
-    metrics.behavioralPatterns.push(`Shuffle: on ${Math.round(shuffleCount / allEvents.length * 100)}% of the time`);
-
-    // Overall skip rate
-    const overallSkipRate = allEvents.filter((e) => e.skipped).length / allEvents.length;
-    metrics.behavioralPatterns.push(`Overall skip rate: ${Math.round(overallSkipRate * 100)}%`);
 
     // Preserve importedFiles list across recomputation
     metrics.importedFiles = historyMetrics?.importedFiles || [];
