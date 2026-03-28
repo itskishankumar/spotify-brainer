@@ -17,7 +17,7 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
-- **AI music generation** — generates original 30-second clips tailored to your taste profile using Lyria (Google AI); save and replay clips with a built-in audio player
+- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe or reference a time period ("something like I listened to in summer 2023") and the LLM translates your actual listening history into a Lyria prompt using its built-in knowledge of what those specific tracks sound like; save and replay clips with a built-in audio player
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
@@ -73,7 +73,7 @@ Re-importing clears previous history. Use the **Clear History** button to wipe d
 1. In Settings → Music Generation, select a provider and model
 2. Enter your API key (for Lyria, get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
 3. Click the sparkle icon (✦) in the header to open the Generate tab
-4. Optionally describe what you want, then click **Generate**
+4. Optionally describe what you're in the mood for — you can be vague ("something chill") or reference a time period ("a song I would've liked in Sept 2024"); leave blank to use your overall profile
 5. Save clips you like — they're stored locally and accessible from the library
 
 ## Architecture
@@ -97,6 +97,7 @@ spotify-brainer/
 │   │   └── gemini.js          # Gemini adapter
 │   └── registry.js            # Provider registry
 ├── music-gen/
+│   ├── prompt-builder.js      # Music agent system prompt, Lyria JSON assembly, genre fallback
 │   ├── types.js               # Unified MusicGenRequest/MusicGenResponse
 │   ├── adapter.js             # Base adapter interface
 │   └── adapters/
@@ -138,8 +139,23 @@ GDPR Import  ──→  IndexedDB ──┤
            (play, search, etc.)  (profile, history,
                                   top tracks, etc.)
 
-buildMusicPrompt() ──→  MusicGenAdapter  ──→  Generated audio (base64)
-  (taste signals)      Lyria / ...            stored in chrome.storage.local
+buildMusicAgentSystemPrompt()  ──→  LLM agentic loop (max 3 rounds)
+  (taste profile as baseline)        Claude / OpenAI / Gemini
+                                              │
+                                       tool_use? (optional)
+                                              │
+                                    get_history_taste(from, to)  ──→  IndexedDB
+                                      (if time period mentioned)       period artists,
+                                              │                        tracks, signals
+                                              │ ◄─────────────────────────────┘
+                                              ▼
+                                    LLM uses music knowledge of
+                                    specific artists/tracks to
+                                    output Lyria JSON prompt
+                                              │
+                                              ▼
+                                    assembleLyriaPrompt()  ──→  MusicGenAdapter  ──→  Generated audio
+                                      (JSON → string)            Lyria                stored locally
 ```
 
 ## Adding a Music Generation Provider

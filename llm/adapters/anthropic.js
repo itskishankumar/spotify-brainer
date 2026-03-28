@@ -42,6 +42,17 @@ export class AnthropicAdapter extends LLMAdapter {
 
   async sendMessage(request, apiKey) {
     const { systemMsg, messages } = this._splitSystem(request.messages);
+    const body = {
+      model: request.model,
+      max_tokens: request.maxTokens || 4096,
+      system: systemMsg || undefined,
+      messages,
+      temperature: request.temperature,
+    };
+    if (request.tools?.length) {
+      body.tools = request.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -50,13 +61,7 @@ export class AnthropicAdapter extends LLMAdapter {
         'content-type': 'application/json',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({
-        model: request.model,
-        max_tokens: request.maxTokens || 4096,
-        system: systemMsg || undefined,
-        messages,
-        temperature: request.temperature,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -65,14 +70,18 @@ export class AnthropicAdapter extends LLMAdapter {
     }
 
     const data = await res.json();
+    const content = data.content ?? [];
+    const textContent = content.find((b) => b.type === 'text')?.text || '';
+    const toolCalls = content.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, input: b.input }));
     return {
-      content: data.content[0]?.text || '',
+      content: textContent,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
       model: data.model,
       usage: {
         inputTokens: data.usage?.input_tokens || 0,
         outputTokens: data.usage?.output_tokens || 0,
       },
-      finishReason: data.stop_reason === 'end_turn' ? 'end' : data.stop_reason === 'max_tokens' ? 'max_tokens' : 'end',
+      finishReason: data.stop_reason === 'tool_use' ? 'tool_use' : data.stop_reason === 'end_turn' ? 'end' : 'end',
     };
   }
 

@@ -3,7 +3,7 @@
 
 import { getAdapter } from '../llm/registry.js';
 import { LyriaAdapter } from '../music-gen/adapters/lyria.js';
-import { buildMusicPrompt } from '../music-gen/prompt-builder.js';
+import { buildMusicAgentSystemPrompt, assembleLyriaPrompt, buildFallbackLyriaPrompt } from '../music-gen/prompt-builder.js';
 import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
@@ -329,26 +329,80 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'music-generate') {
     (async () => {
       try {
-        const { provider, model, apiKey } = msg;
+        const { provider, model, apiKey, userIntent } = msg;
         if (!apiKey) { sendResponse({ error: 'No API key provided.' }); return; }
 
-        // Read the user's configured LLM credentials to build the prompt
+        // 1. Load LLM credentials
         const llmSettings = await chrome.storage.local.get(['sb_provider']);
         const llmProvider = llmSettings.sb_provider;
-        let llmAdapter = null;
-        let llmModel = null;
-        let llmApiKey = null;
+        let llmAdapter = null, llmModel = null, llmApiKey = null;
         if (llmProvider) {
           const llmData = await chrome.storage.local.get([`sb_apiKey_${llmProvider}`, `sb_model_${llmProvider}`]);
           llmApiKey = llmData[`sb_apiKey_${llmProvider}`];
-          llmModel = llmData[`sb_model_${llmProvider}`];
+          llmModel  = llmData[`sb_model_${llmProvider}`];
           if (llmApiKey && llmModel) llmAdapter = getAdapter(llmProvider);
         }
 
+        // 2. Agentic loop — the LLM parses the user's intent, calls get_history_taste
+        //    with date params if a time period is mentioned, then uses its music knowledge
+        //    of the returned artists/tracks to output a Lyria JSON prompt.
+        let lyriaPrompt = null;
+        if (llmAdapter) {
+          try {
+            const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) =>
+              ['get_history_taste', 'get_history_artists', 'get_top_artists', 'get_top_tracks'].includes(t.name)
+            );
+            const messages = [
+              { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
+              { role: 'user', content: userIntent?.trim() || 'Generate a track that reflects my overall taste.' },
+            ];
+
+            const MAX_ROUNDS = 3;
+            for (let round = 0; round < MAX_ROUNDS; round++) {
+              const response = await llmAdapter.sendMessage({
+                model: llmModel,
+                maxTokens: 300,
+                temperature: 0.3,
+                messages,
+                tools: MUSIC_TOOLS,
+              }, llmApiKey);
+
+              if (response.finishReason === 'tool_use' && response.toolCalls?.length) {
+                // Build assistant turn
+                const assistantContent = [];
+                if (response.content) assistantContent.push({ type: 'text', text: response.content });
+                for (const tc of response.toolCalls) {
+                  assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+                }
+                messages.push({ role: 'assistant', content: assistantContent });
+
+                // Execute tools and return results
+                const toolResults = [];
+                for (const tc of response.toolCalls) {
+                  const result = await executeTool(tc.name, tc.input);
+                  console.log(`[Spotify Brainer] Tool ${tc.name}(${JSON.stringify(tc.input)}) →`, result);
+                  toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: JSON.stringify(result) });
+                }
+                messages.push({ role: 'user', content: toolResults });
+              } else {
+                // LLM finished — parse JSON output as Lyria prompt
+                const jsonMatch = response.content?.trim().match(/\{[\s\S]*\}/);
+                if (jsonMatch) lyriaPrompt = assembleLyriaPrompt(JSON.parse(jsonMatch[0]));
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('[Spotify Brainer] Music agent failed, using fallback:', e.message);
+          }
+        }
+
+        if (!lyriaPrompt) {
+          lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence });
+        }
+
         const musicAdapter = getMusicGenAdapter(provider);
-        const prompt = await buildMusicPrompt(msg.userPrompt, intelligence, historyMetrics, spotifyData, model, llmAdapter, llmModel, llmApiKey);
-        const result = await musicAdapter.generate({ prompt, model }, apiKey);
-        sendResponse({ ...result, prompt });
+        const result = await musicAdapter.generate({ prompt: lyriaPrompt, model }, apiKey);
+        sendResponse({ ...result, prompt: lyriaPrompt });
       } catch (e) {
         console.error('[Spotify Brainer] Music generation failed:', e.message);
         sendResponse({ error: e.message });
@@ -424,24 +478,50 @@ async function executeTool(toolName, input) {
       if (!intelligence) return { error: 'No taste profile computed. Ask the user to refresh their data.' };
       return { success: true, data: intelligence };
     },
-    get_history_stats: () => {
-      if (!historyMetrics) return { error: 'No listening history imported. Ask the user to import their Spotify GDPR data export.' };
+    get_history_stats: async () => {
+      if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported. Ask the user to import their Spotify GDPR data export.' };
+      if (input.from || input.to) {
+        const events = await getEventsInRange(input.from, input.to);
+        const stats = computePeriodStats(events);
+        return stats.error ? { error: stats.error } : { success: true, data: stats };
+      }
       return { success: true, data: { lifetimeStats: historyMetrics.lifetimeStats, listeningEngagement: historyMetrics.listeningEngagement, streaksRecords: historyMetrics.streaksRecords } };
     },
-    get_history_artists: () => {
-      if (!historyMetrics) return { error: 'No listening history imported.' };
+    get_history_artists: async () => {
+      if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported.' };
+      if (input.from || input.to) {
+        const events = await getEventsInRange(input.from, input.to);
+        const stats = computePeriodStats(events);
+        // Returns extended top-20 artist list with no track/temporal data — use when you need more artists than get_history_taste provides
+        return stats.error ? { error: stats.error } : { success: true, data: { period: stats.period, topArtists: stats.topArtists, uniqueArtists: stats.uniqueArtists, totalPlays: stats.totalPlays, totalHours: stats.totalHours } };
+      }
       return { success: true, data: { artistRelationships: historyMetrics.artistRelationships } };
     },
-    get_history_temporal: () => {
-      if (!historyMetrics) return { error: 'No listening history imported.' };
+    get_history_temporal: async () => {
+      if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported.' };
+      if (input.from || input.to) {
+        const events = await getEventsInRange(input.from, input.to);
+        const stats = computePeriodStats(events);
+        return stats.error ? { error: stats.error } : { success: true, data: { period: stats.period, peakHour: stats.peakHour, nightOwlPct: stats.nightOwlPct, totalPlays: stats.totalPlays, totalHours: stats.totalHours } };
+      }
       return { success: true, data: { temporalBehavior: historyMetrics.temporalBehavior } };
     },
-    get_history_replay: () => {
-      if (!historyMetrics) return { error: 'No listening history imported.' };
+    get_history_replay: async () => {
+      if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported.' };
+      if (input.from || input.to) {
+        const events = await getEventsInRange(input.from, input.to);
+        const stats = computePeriodStats(events);
+        return stats.error ? { error: stats.error } : { success: true, data: { period: stats.period, repeatRatio: stats.repeatRatio, topTracks: stats.topTracks } };
+      }
       return { success: true, data: { replayObsession: historyMetrics.replayObsession } };
     },
-    get_history_taste: () => {
-      if (!historyMetrics) return { error: 'No listening history imported.' };
+    get_history_taste: async () => {
+      if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported.' };
+      if (input.from || input.to) {
+        const events = await getEventsInRange(input.from, input.to);
+        const stats = computePeriodStats(events);
+        return stats.error ? { error: stats.error } : { success: true, data: { period: stats.period, topArtists: stats.topArtists.slice(0, 10), topTracks: stats.topTracks, peakHour: stats.peakHour, nightOwlPct: stats.nightOwlPct, repeatRatio: stats.repeatRatio, totalPlays: stats.totalPlays, totalHours: stats.totalHours } };
+      }
       return { success: true, data: { tasteProfile: historyMetrics.tasteProfile, tasteEvolution: historyMetrics.tasteEvolution } };
     },
     get_queue: () => {
@@ -452,7 +532,7 @@ async function executeTool(toolName, input) {
   };
 
   if (DATA_TOOLS[toolName]) {
-    return DATA_TOOLS[toolName]();
+    return await DATA_TOOLS[toolName]();
   }
 
   const mapping = TOOL_TO_ACTION[toolName];
@@ -1091,6 +1171,103 @@ function openHistoryDB() {
     req.onerror = () => reject(req.error);
   });
 }
+
+/**
+ * Fetch raw listening events from IndexedDB filtered to an optional date range.
+ * @param {string} [from] - ISO date string YYYY-MM-DD (start, inclusive)
+ * @param {string} [to]   - ISO date string YYYY-MM-DD (end, inclusive)
+ */
+async function getEventsInRange(from, to) {
+  const db = await openHistoryDB();
+  const allEvents = await new Promise((resolve, reject) => {
+    const tx = db.transaction('listeningEvents', 'readonly');
+    const req = tx.objectStore('listeningEvents').getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const fromMs = from ? new Date(from).getTime() : 0;
+  const toMs = to ? new Date(to + 'T23:59:59.999').getTime() : Infinity;
+  return allEvents.filter((e) => e.timestamp >= fromMs && e.timestamp <= toMs);
+}
+
+/**
+ * Compute a lightweight taste snapshot for a filtered set of events.
+ * Used when the LLM queries history tools with a date range.
+ */
+function computePeriodStats(events) {
+  if (!events.length) return { error: 'No listening history found for this period.' };
+
+  const STREAM_THRESHOLD_MS = 30000;
+  const meaningful = events.filter((e) => (e.msPlayed || 0) >= STREAM_THRESHOLD_MS);
+  if (!meaningful.length) return { error: 'No complete plays found for this period.' };
+
+  events.sort((a, b) => a.timestamp - b.timestamp);
+
+  // Top artists
+  const artistPlays = {};
+  const artistMs = {};
+  for (const e of meaningful) {
+    if (!e.artistName) continue;
+    artistPlays[e.artistName] = (artistPlays[e.artistName] || 0) + 1;
+    artistMs[e.artistName] = (artistMs[e.artistName] || 0) + (e.msPlayed || 0);
+  }
+  const topArtists = Object.entries(artistPlays)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([name, plays]) => ({ name, plays, hoursListened: Math.round((artistMs[name] || 0) / 3600000 * 10) / 10 }));
+
+  // Top tracks — URI preserved for potential future use
+  const trackData = {};
+  for (const e of meaningful) {
+    const key = e.trackName && e.artistName ? `${e.trackName} — ${e.artistName}` : null;
+    if (!key) continue;
+    if (!trackData[key]) trackData[key] = { plays: 0, uri: e.trackUri || null };
+    trackData[key].plays++;
+    if (!trackData[key].uri && e.trackUri) trackData[key].uri = e.trackUri;
+  }
+  const topTracks = Object.entries(trackData)
+    .sort((a, b) => b[1].plays - a[1].plays)
+    .slice(0, 10)
+    .map(([name, d]) => ({ name, plays: d.plays, uri: d.uri }));
+
+  // Temporal
+  const hourCounts = new Array(24).fill(0);
+  let nightOwlCount = 0;
+  for (const e of meaningful) {
+    const hour = new Date(e.timestamp).getHours();
+    hourCounts[hour]++;
+    if (hour >= 0 && hour < 5) nightOwlCount++;
+  }
+  const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+  const nightOwlPct = Math.round(nightOwlCount / meaningful.length * 100);
+
+  // Repeat ratio
+  let repeatCount = 0;
+  const lastSeen = {};
+  for (const e of events) {
+    const key = e.trackUri || (e.trackName && e.artistName ? `${e.trackName}|||${e.artistName}` : null);
+    if (!key) continue;
+    if (lastSeen[key] && (e.timestamp - lastSeen[key]) < 86400000) repeatCount++;
+    lastSeen[key] = e.timestamp;
+  }
+
+  return {
+    period: {
+      from: new Date(events[0].timestamp).toISOString().slice(0, 10),
+      to: new Date(events[events.length - 1].timestamp).toISOString().slice(0, 10),
+    },
+    totalPlays: meaningful.length,
+    totalHours: Math.round(meaningful.reduce((s, e) => s + (e.msPlayed || 0), 0) / 3600000 * 10) / 10,
+    uniqueArtists: Object.keys(artistPlays).length,
+    uniqueTracks: Object.keys(trackData).length,
+    topArtists,
+    topTracks,
+    peakHour,
+    nightOwlPct,
+    repeatRatio: Math.round(repeatCount / events.length * 100),
+  };
+}
+
 
 async function computeHistoryMetrics() {
   try {

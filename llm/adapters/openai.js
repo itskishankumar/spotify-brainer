@@ -29,23 +29,41 @@ export class OpenAIAdapter extends LLMAdapter {
   }
 
   async sendMessage(request, apiKey) {
-    const messages = request.messages.map((m) => ({
-      role: m.role === 'system' ? 'system' : m.role,
-      content: m.content,
-    }));
+    // Convert from our normalized format to OpenAI format, handling tool messages
+    const messages = request.messages.flatMap((m) => {
+      // Assistant message with tool_use blocks → OpenAI tool_calls format
+      if (m.role === 'assistant' && Array.isArray(m.content)) {
+        const text = m.content.find((b) => b.type === 'text')?.text || null;
+        const toolCalls = m.content.filter((b) => b.type === 'tool_use').map((b) => ({
+          id: b.id, type: 'function',
+          function: { name: b.name, arguments: JSON.stringify(b.input) },
+        }));
+        return [{ role: 'assistant', content: text, tool_calls: toolCalls.length ? toolCalls : undefined }];
+      }
+      // User message with tool_result blocks → OpenAI tool messages
+      if (m.role === 'user' && Array.isArray(m.content) && m.content[0]?.type === 'tool_result') {
+        return m.content.map((b) => ({ role: 'tool', tool_call_id: b.tool_use_id, content: b.content }));
+      }
+      return [{ role: m.role, content: m.content }];
+    });
+
+    const body = {
+      model: request.model,
+      messages,
+      max_completion_tokens: request.maxTokens || 4096,
+      temperature: request.temperature,
+    };
+    if (request.tools?.length) {
+      body.tools = request.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.input_schema },
+      }));
+    }
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: request.model,
-        messages,
-        max_completion_tokens: request.maxTokens || 4096,
-        temperature: request.temperature,
-      }),
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -54,14 +72,21 @@ export class OpenAIAdapter extends LLMAdapter {
     }
 
     const data = await res.json();
+    const choice = data.choices[0];
+    const rawToolCalls = choice?.message?.tool_calls;
+    const toolCalls = rawToolCalls?.map((tc) => ({
+      id: tc.id, name: tc.function.name,
+      input: JSON.parse(tc.function.arguments || '{}'),
+    }));
     return {
-      content: data.choices[0]?.message?.content || '',
+      content: choice?.message?.content || '',
+      toolCalls: toolCalls?.length ? toolCalls : undefined,
       model: data.model,
       usage: {
         inputTokens: data.usage?.prompt_tokens || 0,
         outputTokens: data.usage?.completion_tokens || 0,
       },
-      finishReason: data.choices[0]?.finish_reason === 'stop' ? 'end' : 'max_tokens',
+      finishReason: choice?.finish_reason === 'tool_calls' ? 'tool_use' : 'end',
     };
   }
 

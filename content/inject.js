@@ -191,8 +191,8 @@
         </div>
 
         <div class="sb-generate-prompt-wrap">
-          <label class="sb-generate-label">Describe what you want <span style="color:#535353">(optional)</span></label>
-          <textarea id="sb-gen-prompt" class="sb-gen-textarea" placeholder="e.g. chill lo-fi with rain sounds, or leave blank to let AI decide based on your taste"></textarea>
+          <label class="sb-generate-label">What are you in the mood for? <span style="color:#535353">(optional)</span></label>
+          <textarea id="sb-gen-prompt" class="sb-gen-textarea" placeholder="e.g. &quot;a song I would've liked in Sept 2024&quot;, &quot;something for a late night drive&quot;, &quot;upbeat like my summer playlists&quot;, or leave blank to let AI decide"></textarea>
         </div>
 
         <button id="sb-gen-btn" class="sb-gen-btn">
@@ -1974,7 +1974,7 @@
     let audio = null;
     let isGenerating = false;
     let pendingSong = null;   // generated but not yet saved
-    let savedSongs = [];      // persisted songs: [{id, audio, mimeType, prompt, userPrompt, generatedAt}]
+    let savedSongs = [];      // persisted songs: [{id, audio, mimeType, prompt, userIntent, generatedAt}]
 
     const SONGS_KEY = 'sb_gen_songs';
     const MAX_SONGS = 8;
@@ -2033,11 +2033,11 @@
     function showPlayer(song, showSaveActions) {
       loadAudio(song.audio, song.mimeType);
       genPromptUsed.textContent = song.prompt || '';
-      genTrackName.textContent = song.name || song.userPrompt || 'Generated clip';
+      genTrackName.textContent = song.name || song.userIntent || 'Generated clip';
       genPlayer.style.display = 'flex';
       genSaveRow.style.display = showSaveActions ? 'block' : 'none';
       if (showSaveActions) {
-        genNameInput.value = song.userPrompt || '';
+        genNameInput.value = song.userIntent || '';
         setTimeout(() => genNameInput.focus(), 50);
       }
       setStatus('');
@@ -2053,7 +2053,7 @@
         <div class="sb-gen-lib-item" data-idx="${idx}">
           <button class="sb-gen-lib-play" data-idx="${idx}" title="Play">${ICONS.play}</button>
           <div class="sb-gen-lib-info">
-            <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userPrompt || 'Untitled')}</div>
+            <div class="sb-gen-lib-label">${escapeHtml(song.name || song.userIntent || 'Untitled')}</div>
             <div class="sb-gen-lib-date">${formatDate(song.generatedAt)}</div>
           </div>
           <button class="sb-gen-lib-delete" data-idx="${idx}" title="Delete">${ICONS.trash}</button>
@@ -2084,7 +2084,7 @@
 
     genSaveBtn.addEventListener('click', () => {
       if (!pendingSong) return;
-      pendingSong.name = genNameInput.value.trim() || pendingSong.userPrompt || 'Untitled';
+      pendingSong.name = genNameInput.value.trim() || pendingSong.userIntent || 'Untitled';
       if (savedSongs.length >= MAX_SONGS) savedSongs.pop(); // drop oldest
       savedSongs.unshift(pendingSong);
       persistSongs();
@@ -2141,15 +2141,15 @@
       genBtnLabel.textContent = 'Generating...';
       genPlayer.style.display = 'none';
       genSaveRow.style.display = 'none';
-      setStatus('Composing your track… this takes ~15s');
+      setStatus('Analysing your taste…');
 
       try {
-        const userPrompt = genPromptInput.value.trim();
+        const userIntent = genPromptInput.value.trim();
         const resp = await chrome.runtime.sendMessage({
           type: 'music-generate',
           provider,
           model,
-          userPrompt,
+          userIntent,
           apiKey,
         });
 
@@ -2161,7 +2161,7 @@
             audio: resp.audio,
             mimeType: resp.mimeType,
             prompt: resp.prompt,
-            userPrompt,
+            userIntent,
             generatedAt: Date.now(),
           };
           showPlayer(pendingSong, true);

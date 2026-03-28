@@ -308,28 +308,58 @@ export const SPOTIFY_TOOLS = [
   },
   {
     name: 'get_history_stats',
-    description: 'Get lifetime listening stats and engagement metrics from GDPR history — total plays, hours, unique tracks/artists, top all-time track/artist, listening engagement score, and streak/record data.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get listening stats and engagement metrics from GDPR history. Optionally filter to a specific date range to see stats for a particular period (e.g. a specific month or year).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (optional). If omitted, uses all-time data.' },
+        to: { type: 'string', description: 'End date YYYY-MM-DD (optional). If omitted, uses all-time data.' },
+      },
+    },
   },
   {
     name: 'get_history_artists',
-    description: 'Get artist relationship data from GDPR history — top artists by play count, artist lifecycles (rising/fading/stable), and new artist discovery rate over time.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get top artists from GDPR listening history. Optionally filter to a date range to see who the user was most into during a specific period.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (optional).' },
+        to: { type: 'string', description: 'End date YYYY-MM-DD (optional).' },
+      },
+    },
   },
   {
     name: 'get_history_temporal',
-    description: 'Get temporal listening patterns from GDPR history — 24-hour heatmap, session stats, night owl score, weekday vs weekend split, and monthly hours listened.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get temporal listening patterns from GDPR history (peak hour, night owl score, session stats). Optionally filter to a date range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (optional).' },
+        to: { type: 'string', description: 'End date YYYY-MM-DD (optional).' },
+      },
+    },
   },
   {
     name: 'get_history_replay',
-    description: 'Get replay obsession data from GDPR history — repeat ratio, binge episodes, and one-and-done tracks.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get replay and obsession data from GDPR history (repeat ratio, binge episodes). Optionally filter to a date range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (optional).' },
+        to: { type: 'string', description: 'End date YYYY-MM-DD (optional).' },
+      },
+    },
   },
   {
     name: 'get_history_taste',
-    description: 'Get taste evolution data from GDPR history — monthly top artist, artist concentration (Gini), variety score, and taste evolution periods.',
-    input_schema: { type: 'object', properties: {} },
+    description: 'Get taste profile from GDPR history — top artists, artist concentration, variety. Optionally filter to a date range to understand what the user was into at a specific point in time.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (optional).' },
+        to: { type: 'string', description: 'End date YYYY-MM-DD (optional).' },
+      },
+    },
   },
   {
     name: 'get_queue',

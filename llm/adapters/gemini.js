@@ -27,20 +27,18 @@ export class GeminiAdapter extends LLMAdapter {
 
   async sendMessage(request, apiKey) {
     const { systemInstruction, contents } = this._convertMessages(request.messages);
+    const body = {
+      systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+      contents,
+      generationConfig: { maxOutputTokens: request.maxTokens || 4096, temperature: request.temperature },
+    };
+    if (request.tools?.length) {
+      body.tools = [{ functionDeclarations: request.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.input_schema })) }];
+    }
+
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-          contents,
-          generationConfig: {
-            maxOutputTokens: request.maxTokens || 4096,
-            temperature: request.temperature,
-          },
-        }),
-      }
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
     );
 
     if (!res.ok) {
@@ -49,15 +47,22 @@ export class GeminiAdapter extends LLMAdapter {
     }
 
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.find((p) => p.text)?.text || '';
+    const toolCalls = parts.filter((p) => p.functionCall).map((p, i) => ({
+      id: `gemini-fc-${i}`,
+      name: p.functionCall.name,
+      input: p.functionCall.args || {},
+    }));
     return {
       content: text,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
       model: request.model,
       usage: {
         inputTokens: data.usageMetadata?.promptTokenCount || 0,
         outputTokens: data.usageMetadata?.candidatesTokenCount || 0,
       },
-      finishReason: data.candidates?.[0]?.finishReason === 'STOP' ? 'end' : 'max_tokens',
+      finishReason: toolCalls.length ? 'tool_use' : 'end',
     };
   }
 
@@ -139,12 +144,33 @@ export class GeminiAdapter extends LLMAdapter {
     for (const msg of messages) {
       if (msg.role === 'system') {
         systemInstruction += (systemInstruction ? '\n\n' : '') + msg.content;
-      } else {
-        contents.push({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }],
-        });
+        continue;
       }
+
+      // Assistant message with tool_use blocks → Gemini functionCall parts
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const parts = [];
+        for (const b of msg.content) {
+          if (b.type === 'text') parts.push({ text: b.text });
+          else if (b.type === 'tool_use') parts.push({ functionCall: { name: b.name, args: b.input } });
+        }
+        contents.push({ role: 'model', parts });
+        continue;
+      }
+
+      // User message with tool_result blocks → Gemini functionResponse parts
+      if (msg.role === 'user' && Array.isArray(msg.content) && msg.content[0]?.type === 'tool_result') {
+        const parts = msg.content.map((b) => ({
+          functionResponse: { name: b.tool_use_id, response: { content: b.content } },
+        }));
+        contents.push({ role: 'user', parts });
+        continue;
+      }
+
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }],
+      });
     }
 
     return { systemInstruction, contents };
