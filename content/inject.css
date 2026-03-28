@@ -425,6 +425,27 @@ body.spotify-brainer-open {
   text-decoration: underline;
 }
 
+.sb-msg-content a[href^="spotify:"] {
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(29, 185, 84, 0.4);
+}
+
+.sb-msg-content a[href^="spotify:"]::before {
+  content: '\25B6';
+  font-size: 9px;
+  margin-right: 3px;
+  opacity: 0.6;
+}
+
+.sb-msg-content a[href^="spotify:"]:hover {
+  text-decoration: none;
+  border-bottom-color: #1DB954;
+}
+
+.sb-msg-content a[href^="spotify:"]:hover::before {
+  opacity: 1;
+}
+
 .sb-msg-content strong {
   color: #fff;
 }
@@ -485,6 +506,44 @@ body.spotify-brainer-open {
 @keyframes sb-typing-bounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Tool execution status */
+.sb-tool-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+}
+.sb-tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  animation: sb-fade-in 0.2s ease;
+}
+.sb-tool-pending {
+  background: rgba(255, 255, 255, 0.08);
+  color: #b3b3b3;
+}
+.sb-tool-executing {
+  background: rgba(29, 185, 84, 0.15);
+  color: #1DB954;
+}
+.sb-tool-done {
+  background: rgba(29, 185, 84, 0.1);
+  color: #1DB954;
+}
+.sb-tool-error {
+  background: rgba(255, 76, 76, 0.1);
+  color: #ff4c4c;
+}
+@keyframes sb-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Input area */
@@ -879,7 +938,7 @@ body.spotify-brainer-open {
   margin-right: 6px;
 }
 
-/* Genre/decade bar charts */
+/* Bar charts (decade distribution, etc.) */
 .sb-data-bar-row {
   display: flex;
   align-items: center;

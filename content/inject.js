@@ -68,7 +68,7 @@
           <button class="sb-quick-btn" data-prompt="What am I listening to right now?">Now Playing</button>
           <button class="sb-quick-btn" data-prompt="Recommend songs similar to what I'm playing">Recommend Similar</button>
           <button class="sb-quick-btn" data-prompt="Analyze my music taste and listening patterns">Analyze My Taste</button>
-          <button class="sb-quick-btn" data-prompt="What are my top artists and genres?">My Top Artists</button>
+          <button class="sb-quick-btn" data-prompt="What are my top artists?">My Top Artists</button>
         </div>
       </div>
     </div>
@@ -326,33 +326,6 @@
     if (!intel) return '<div class="sb-data-empty">No taste data computed yet. Click Refresh to load.</div>';
     let html = '';
 
-    if (intel.moodProfile && intel.moodProfile.label !== 'Unknown') {
-      const source = intel.moodProfile.source === 'genre-derived' ? ' (estimated from genres)' : '';
-      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Mood Profile' + source + '</h3>';
-      html += dataRow('Label', intel.moodProfile.label);
-      html += dataRow('Valence', intel.moodProfile.valence?.toFixed(2));
-      html += dataRow('Energy', intel.moodProfile.energy?.toFixed(2));
-      if (intel.moodProfile.danceability != null) html += dataRow('Danceability', intel.moodProfile.danceability?.toFixed(2));
-      if (intel.moodProfile.acousticness != null) html += dataRow('Acousticness', intel.moodProfile.acousticness?.toFixed(2));
-      html += '</div>';
-    } else {
-      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Mood Profile</h3>';
-      html += '<div class="sb-data-muted">Not enough data to compute mood. Click Refresh to fetch.</div></div>';
-    }
-
-    const genreEntries = Object.entries(intel.genreDistribution || {});
-    if (genreEntries.length > 0) {
-      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Genre Distribution</h3>';
-      const sorted = genreEntries.sort((a, b) => b[1] - a[1]).slice(0, 20);
-      for (const [genre, pct] of sorted) {
-        html += dataBar(genre, pct);
-      }
-      html += '</div>';
-    } else {
-      html += '<div class="sb-data-section"><h3 class="sb-data-heading">Genre Distribution</h3>';
-      html += '<div class="sb-data-muted">No genre data available. Click Refresh to fetch.</div></div>';
-    }
-
     if (intel.decadeDistribution) {
       html += '<div class="sb-data-section"><h3 class="sb-data-heading">Decade Distribution</h3>';
       const sorted = Object.entries(intel.decadeDistribution).sort((a, b) => a[0].localeCompare(b[0]));
@@ -411,7 +384,6 @@
       for (let i = 0; i < Math.min(artists.length, 10); i++) {
         const a = artists[i];
         html += '<div class="sb-data-rank"><span class="sb-data-rank-num">' + (i + 1) + '</span> ' + escapeHtml(a.name);
-        if (a.genres?.length) html += ' <span class="sb-data-muted">' + a.genres.slice(0, 2).join(', ') + '</span>';
         html += '</div>';
       }
     }
@@ -755,6 +727,54 @@
     userHasScrolled = !atBottom;
   });
 
+  // --- Spotify link click-to-play ---
+  messagesEl.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    if (!href || !href.startsWith('spotify:')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (href.startsWith('spotify:track:')) {
+      // Direct play by URI
+      chrome.runtime.sendMessage({
+        type: 'spotify-control',
+        action: 'play',
+        params: { uri: href },
+      }, (r) => {
+        if (!r?.success) console.warn('[Spotify Brainer] Play failed:', r?.error);
+      });
+    } else if (href.startsWith('spotify:search:')) {
+      // Search then play first result
+      const query = decodeURIComponent(href.replace('spotify:search:', ''));
+      chrome.runtime.sendMessage({
+        type: 'spotify-control',
+        action: 'search',
+        params: { query, types: ['track'], limit: 1 },
+      }, (r) => {
+        if (r?.success && r.data?.tracks?.items?.length) {
+          const track = r.data.tracks.items[0];
+          chrome.runtime.sendMessage({
+            type: 'spotify-control',
+            action: 'play',
+            params: { uri: track.uri },
+          });
+        } else {
+          console.warn('[Spotify Brainer] Search play failed:', r?.error || 'No results');
+        }
+      });
+    } else if (href.startsWith('spotify:album:') || href.startsWith('spotify:playlist:') || href.startsWith('spotify:artist:')) {
+      // Play context (album, playlist, artist)
+      chrome.runtime.sendMessage({
+        type: 'spotify-control',
+        action: 'play',
+        params: { contextUri: href },
+      }, (r) => {
+        if (!r?.success) console.warn('[Spotify Brainer] Play failed:', r?.error);
+      });
+    }
+  });
+
   // --- Conversation list ---
   document.getElementById('sb-btn-history').addEventListener('click', () => {
     showingConvList = !showingConvList;
@@ -897,8 +917,6 @@
       if (!model) {
         throw new Error('No model selected. Open Settings to configure.');
       }
-      console.log('[Spotify Brainer] Sending to', provider, model);
-
       // Open port for streaming
       const port = chrome.runtime.connect({ name: 'llm-stream' });
       abortController = { abort: () => port.disconnect() };
@@ -906,11 +924,15 @@
       let assistantEl = null;
       let contentEl = null;
 
+      let toolStatusEl = null; // Container for tool execution status pills
+
       port.onMessage.addListener((chunk) => {
         if (chunk.type === 'text') {
           // Remove typing indicator on first token
           const typing = document.getElementById('sb-typing');
           if (typing) typing.remove();
+          // Remove tool status on text (the LLM is now responding with results)
+          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
 
           assistantMsg.content += chunk.content;
 
@@ -922,7 +944,42 @@
             contentEl.innerHTML = renderMarkdown(assistantMsg.content);
           }
           scrollToBottom();
+        } else if (chunk.type === 'tool_use_start') {
+          // Show a status pill for the tool being called
+          const typing = document.getElementById('sb-typing');
+          if (typing) typing.remove();
+
+          if (!toolStatusEl) {
+            toolStatusEl = document.createElement('div');
+            toolStatusEl.className = 'sb-tool-status';
+            messagesEl.appendChild(toolStatusEl);
+          }
+          const pill = document.createElement('div');
+          pill.className = 'sb-tool-pill sb-tool-pending';
+          pill.dataset.tool = chunk.toolName;
+          pill.textContent = `⏳ ${formatToolName(chunk.toolName)}...`;
+          toolStatusEl.appendChild(pill);
+          scrollToBottom();
+        } else if (chunk.type === 'tool_status') {
+          // Update the pill for this tool
+          if (toolStatusEl) {
+            const pill = toolStatusEl.querySelector(`[data-tool="${chunk.toolName}"]`);
+            if (pill) {
+              if (chunk.status === 'executing') {
+                pill.textContent = `⚡ ${formatToolName(chunk.toolName)}...`;
+                pill.className = 'sb-tool-pill sb-tool-executing';
+              } else if (chunk.status === 'done') {
+                pill.textContent = `✓ ${formatToolName(chunk.toolName)}`;
+                pill.className = 'sb-tool-pill sb-tool-done';
+              } else if (chunk.status === 'error') {
+                pill.textContent = `✗ ${formatToolName(chunk.toolName)}: ${chunk.result}`;
+                pill.className = 'sb-tool-pill sb-tool-error';
+              }
+            }
+          }
+          scrollToBottom();
         } else if (chunk.type === 'done') {
+          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
           finishGeneration();
           if (chunk.usage) {
             tokenCounter.textContent = `${chunk.usage.inputTokens} in / ${chunk.usage.outputTokens} out`;
@@ -930,6 +987,7 @@
         } else if (chunk.type === 'error') {
           const typing = document.getElementById('sb-typing');
           if (typing) typing.remove();
+          if (toolStatusEl) { toolStatusEl.remove(); toolStatusEl = null; }
           showError(chunk.content, 'LLM Response');
           conv.messages.pop();
           finishGeneration();
@@ -957,6 +1015,28 @@
     }
 
     saveConversations();
+  }
+
+  function formatToolName(name) {
+    const map = {
+      play_track: 'Playing',
+      pause: 'Pausing',
+      skip_next: 'Skipping',
+      skip_previous: 'Going back',
+      seek: 'Seeking',
+      set_volume: 'Setting volume',
+      set_shuffle: 'Toggling shuffle',
+      set_repeat: 'Setting repeat',
+      add_to_queue: 'Adding to queue',
+      search: 'Searching',
+      get_devices: 'Getting devices',
+      transfer_playback: 'Transferring playback',
+      add_to_playlist: 'Adding to playlist',
+      create_playlist: 'Creating playlist',
+      save_tracks: 'Saving tracks',
+      remove_saved_tracks: 'Removing tracks',
+    };
+    return map[name] || name;
   }
 
   function finishGeneration() {
@@ -1000,11 +1080,28 @@
 
   // --- Markdown rendering (lightweight) ---
   // Use marked.js for proper markdown rendering
+  // Configure marked.js for markdown rendering with spotify: protocol support
   const markedInstance = typeof marked !== 'undefined' ? marked : null;
-  if (markedInstance?.setOptions) {
+  if (markedInstance) {
+    // Custom renderer to allow spotify: URIs in links
+    const renderer = new markedInstance.Renderer();
+    const originalLink = renderer.link;
+    renderer.link = function ({ href, title, tokens }) {
+      const text = this.parser.parseInline(tokens);
+      // Allow spotify: protocol links
+      if (href && href.startsWith('spotify:')) {
+        const titleAttr = title ? ` title="${title}"` : '';
+        return `<a href="${href}"${titleAttr}>${text}</a>`;
+      }
+      // Default behavior for other links
+      const titleAttr = title ? ` title="${title}"` : '';
+      return `<a href="${href}" target="_blank" rel="noopener"${titleAttr}>${text}</a>`;
+    };
+
     markedInstance.setOptions({
       breaks: true,
       gfm: true,
+      renderer,
     });
   }
 
@@ -1221,7 +1318,7 @@
           const data = JSON.parse(text);
           chrome.runtime.sendMessage({ type: 'gdpr-import', data, filename: file.name });
         } catch (err) {
-          console.error('Failed to parse GDPR JSON:', err);
+          console.error('[Spotify Brainer] Failed to parse GDPR JSON:', err);
         }
       } else if (file.name.endsWith('.zip')) {
         // We'll handle ZIP extraction in the background worker

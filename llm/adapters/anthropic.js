@@ -82,6 +82,20 @@ export class AnthropicAdapter extends LLMAdapter {
 
     (async () => {
       try {
+        const body = {
+          model: request.model,
+          max_tokens: request.maxTokens || 4096,
+          system: systemMsg || undefined,
+          messages,
+          temperature: request.temperature,
+          stream: true,
+        };
+
+        // Add tools if provided
+        if (request.tools && request.tools.length > 0) {
+          body.tools = request.tools;
+        }
+
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -90,14 +104,7 @@ export class AnthropicAdapter extends LLMAdapter {
             'content-type': 'application/json',
             'anthropic-dangerous-direct-browser-access': 'true',
           },
-          body: JSON.stringify({
-            model: request.model,
-            max_tokens: request.maxTokens || 4096,
-            system: systemMsg || undefined,
-            messages,
-            temperature: request.temperature,
-            stream: true,
-          }),
+          body: JSON.stringify(body),
           signal: controller.signal,
         });
 
@@ -111,6 +118,8 @@ export class AnthropicAdapter extends LLMAdapter {
         const decoder = new TextDecoder();
         let buffer = '';
         let usage = { inputTokens: 0, outputTokens: 0 };
+        let currentToolUse = null; // Track in-progress tool_use blocks
+        let stopReason = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -127,11 +136,40 @@ export class AnthropicAdapter extends LLMAdapter {
 
             try {
               const event = JSON.parse(data);
-              if (event.type === 'content_block_delta' && event.delta?.text) {
-                onChunk({ type: 'text', content: event.delta.text });
+
+              if (event.type === 'content_block_start') {
+                if (event.content_block?.type === 'tool_use') {
+                  currentToolUse = {
+                    id: event.content_block.id,
+                    name: event.content_block.name,
+                    inputJson: '',
+                  };
+                  onChunk({ type: 'tool_use_start', toolName: event.content_block.name, toolId: event.content_block.id });
+                }
+              } else if (event.type === 'content_block_delta') {
+                if (event.delta?.type === 'text_delta' && event.delta?.text) {
+                  onChunk({ type: 'text', content: event.delta.text });
+                } else if (event.delta?.type === 'input_json_delta' && currentToolUse) {
+                  currentToolUse.inputJson += event.delta.partial_json || '';
+                }
+              } else if (event.type === 'content_block_stop') {
+                if (currentToolUse) {
+                  let input = {};
+                  try { input = JSON.parse(currentToolUse.inputJson); } catch {}
+                  onChunk({
+                    type: 'tool_use',
+                    toolId: currentToolUse.id,
+                    toolName: currentToolUse.name,
+                    input,
+                  });
+                  currentToolUse = null;
+                }
               } else if (event.type === 'message_delta') {
                 if (event.usage) {
                   usage.outputTokens = event.usage.output_tokens || 0;
+                }
+                if (event.delta?.stop_reason) {
+                  stopReason = event.delta.stop_reason;
                 }
               } else if (event.type === 'message_start' && event.message?.usage) {
                 usage.inputTokens = event.message.usage.input_tokens || 0;
@@ -140,7 +178,7 @@ export class AnthropicAdapter extends LLMAdapter {
           }
         }
 
-        onChunk({ type: 'done', content: '', usage });
+        onChunk({ type: 'done', content: '', usage, stopReason });
       } catch (e) {
         if (e.name !== 'AbortError') {
           onChunk({ type: 'error', content: e.message });
@@ -158,6 +196,7 @@ export class AnthropicAdapter extends LLMAdapter {
       if (msg.role === 'system') {
         systemMsg += (systemMsg ? '\n\n' : '') + msg.content;
       } else {
+        // Content can be a string or an array (for tool_use/tool_result messages)
         filtered.push({ role: msg.role, content: msg.content });
       }
     }

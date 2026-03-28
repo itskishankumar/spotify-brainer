@@ -3,6 +3,8 @@
 
 import { getAdapter } from '../llm/registry.js';
 import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
+import { CONTROLS } from '../lib/spotify-controls.js';
+import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
 import { getAccessToken, isLoggedIn, startLogin, logout, getClientId, setClientId } from '../lib/spotify-auth.js';
 
 // --- Spotify data state ---
@@ -31,6 +33,7 @@ async function saveToCache() {
     spotifyData,
     intelligence,
     historyMetrics,
+    lastLoadedAt,
     cachedAt: Date.now(),
   };
   try {
@@ -50,6 +53,7 @@ async function restoreFromCache() {
     spotifyData = { ...spotifyData, ...cache.spotifyData };
     intelligence = cache.intelligence || null;
     historyMetrics = cache.historyMetrics || null;
+    lastLoadedAt = cache.lastLoadedAt || cache.cachedAt || null;
 
     const age = Date.now() - (cache.cachedAt || 0);
     const ageMin = Math.round(age / 60000);
@@ -69,7 +73,14 @@ function buildSystemPrompt() {
   const parts = [
     `You are Spotify Brainer, an AI powered brain for Spotify with deep knowledge of this user's music identity.`,
     `You have access to their full Spotify data including playlists, listening history, taste profile, and current playback.`,
+    `You can also CONTROL their Spotify — play/pause, skip, search, queue songs, create playlists, save tracks, and more using tools.`,
     `Use the data below to give specific, data-backed answers. Be conversational and music-savvy.`,
+    `When the user asks to play something, search for it first to get the URI, then play it. Don't ask for confirmation — just do it.`,
+    ``,
+    `IMPORTANT: When mentioning or suggesting songs, ALWAYS format them as Spotify links using this exact format:`,
+    `[Song Name](spotify:track:TRACK_ID) by Artist Name`,
+    `Use the track IDs from the data below when available. If you don't have the track ID, use the format [Song Name](spotify:search:ENCODED_QUERY) where ENCODED_QUERY is the URL-encoded search query for that song.`,
+    `This allows the user to click the song name to play it directly.`,
   ];
 
   // Current playback
@@ -95,17 +106,6 @@ function buildSystemPrompt() {
   // Intelligence layer (computed taste profile)
   if (intelligence) {
     parts.push(`\n## Taste DNA (Computed)`);
-    if (intelligence.genreDistribution) {
-      const genres = Object.entries(intelligence.genreDistribution)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([g, pct]) => `${g} (${Math.round(pct * 100)}%)`)
-        .join(', ');
-      parts.push(`Top genres: ${genres}`);
-    }
-    if (intelligence.moodProfile) {
-      parts.push(`Mood: ${intelligence.moodProfile.label} (avg valence: ${intelligence.moodProfile.valence?.toFixed(2)}, avg energy: ${intelligence.moodProfile.energy?.toFixed(2)})`);
-    }
     if (intelligence.decadeDistribution) {
       const decades = Object.entries(intelligence.decadeDistribution)
         .sort((a, b) => b[1] - a[1])
@@ -157,7 +157,7 @@ function buildSystemPrompt() {
   // Top artists (from API)
   if (spotifyData.topArtists.medium?.length) {
     parts.push(`\n## Top Artists (6 months)`);
-    parts.push(spotifyData.topArtists.medium.slice(0, 20).map((a, i) => `${i + 1}. ${a.name} (genres: ${a.genres?.slice(0, 3).join(', ') || 'unknown'})`).join('\n'));
+    parts.push(spotifyData.topArtists.medium.slice(0, 20).map((a, i) => `${i + 1}. ${a.name}`).join('\n'));
   }
   if (spotifyData.topArtists.short?.length) {
     parts.push(`\n## Top Artists (4 weeks)`);
@@ -182,12 +182,21 @@ function buildSystemPrompt() {
   if (spotifyData.playlists?.length) {
     parts.push(`\n## Playlists (${spotifyData.playlists.length} total)`);
     for (const pl of spotifyData.playlists.slice(0, 50)) {
-      let line = `- "${pl.name}" (${pl.tracks?.total || 0} tracks)`;
+      let line = `- "${pl.name}" (${pl.tracks?.total || 0} tracks, id: ${pl.id})`;
       if (intelligence?.playlistProfiles?.[pl.id]) {
         const pp = intelligence.playlistProfiles[pl.id];
-        line += ` — genres: ${pp.topGenres?.join(', ') || '?'}, mood: ${pp.mood || '?'}, cohesion: ${pp.cohesion?.toFixed(2) || '?'}`;
+        line += ` — cohesion: ${pp.cohesion?.toFixed(2) || '?'}`;
       }
       parts.push(line);
+      // Include track listing for each playlist
+      if (pl.trackItems?.length) {
+        for (const t of pl.trackItems.slice(0, 100)) {
+          if (t.name && t.id) parts.push(`  - [${t.name}](spotify:track:${t.id}) — ${t.artists?.map(a => a.name).join(', ') || 'Unknown'}`);
+        }
+        if (pl.trackItems.length > 100) {
+          parts.push(`  - ... and ${pl.trackItems.length - 100} more tracks`);
+        }
+      }
     }
   }
 
@@ -366,6 +375,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // --- Spotify Controls ---
+  if (msg.type === 'spotify-control') {
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          sendResponse({ success: false, error: 'Not logged in' });
+          return;
+        }
+        const fn = CONTROLS[msg.action];
+        if (!fn) {
+          sendResponse({ success: false, error: `Unknown action: ${msg.action}` });
+          return;
+        }
+        const data = await fn(token, msg.params || {});
+        sendResponse({ success: true, data });
+      } catch (e) {
+        console.error(`[Spotify Brainer] Control ${msg.action} failed:`, e.message);
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === 'get-spotify-data') {
     sendResponse({
       ...spotifyData,
@@ -383,12 +416,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // intelligence and historyMetrics are computed directly in this worker
 });
 
-// --- Streaming via port ---
+// --- Execute a tool call against Spotify ---
+async function executeTool(toolName, input) {
+  const mapping = TOOL_TO_ACTION[toolName];
+  if (!mapping) {
+    return { error: `Unknown tool: ${toolName}` };
+  }
+
+  const token = await getAccessToken();
+  if (!token) {
+    return { error: 'Not connected to Spotify. Please connect in Settings.' };
+  }
+
+  const params = mapping.transform(input);
+  const fn = CONTROLS[mapping.action];
+  if (!fn) {
+    return { error: `Control action not found: ${mapping.action}` };
+  }
+
+  try {
+    // Special case: createPlaylist needs userId
+    if (mapping.action === 'createPlaylist' && !params.userId && spotifyData.userProfile?.id) {
+      params.userId = spotifyData.userProfile.id;
+    }
+    const result = await fn(token, params);
+    return { success: true, data: result };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// --- Streaming via port (with tool use loop) ---
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'llm-stream') return;
 
   port.onMessage.addListener(async (msg) => {
     if (msg.type !== 'llm-stream') return;
+
+    let disconnected = false;
+    port.onDisconnect.addListener(() => { disconnected = true; });
+
+    function safeSend(chunk) {
+      if (disconnected) return false;
+      try { port.postMessage(chunk); return true; } catch { disconnected = true; return false; }
+    }
 
     try {
       const adapter = getAdapter(msg.provider);
@@ -400,31 +471,147 @@ chrome.runtime.onConnect.addListener((port) => {
         ...msg.messages.filter((m) => m.role !== 'system'),
       ];
 
-      const request = {
-        messages,
-        model: msg.model,
-        maxTokens: 4096,
-        stream: true,
-      };
+      const MAX_TOOL_ROUNDS = 10; // Safety limit
+      let round = 0;
 
-      const controller = adapter.streamMessage(request, msg.apiKey, (chunk) => {
-        try {
-          port.postMessage(chunk);
-        } catch {
-          // Port disconnected
-          controller.abort();
+      while (round < MAX_TOOL_ROUNDS) {
+        round++;
+        const pendingToolCalls = [];
+        let textContent = '';
+        let stopReason = null;
+
+        const request = {
+          messages,
+          model: msg.model,
+          maxTokens: 4096,
+          stream: true,
+          tools: SPOTIFY_TOOLS,
+        };
+
+        // Stream one round
+        await new Promise((resolve) => {
+          const controller = adapter.streamMessage(request, msg.apiKey, (chunk) => {
+            if (disconnected) { controller.abort(); resolve(); return; }
+
+            if (chunk.type === 'text') {
+              textContent += chunk.content;
+              safeSend(chunk);
+            } else if (chunk.type === 'tool_use_start') {
+              safeSend({ type: 'tool_use_start', toolName: chunk.toolName });
+            } else if (chunk.type === 'tool_use') {
+              pendingToolCalls.push({ id: chunk.toolId, name: chunk.toolName, input: chunk.input });
+            } else if (chunk.type === 'done') {
+              stopReason = chunk.stopReason;
+              resolve();
+            } else if (chunk.type === 'error') {
+              safeSend(chunk);
+              resolve();
+            }
+          });
+
+          // Abort if port disconnects mid-stream
+          const checkDisconnect = () => { if (disconnected) { controller.abort(); resolve(); } };
+          port.onDisconnect.addListener(checkDisconnect);
+        });
+
+        if (disconnected) return;
+
+        // If no tool calls, we're done
+        if (stopReason !== 'tool_use' || pendingToolCalls.length === 0) {
+          safeSend({ type: 'done', content: '' });
+          return;
         }
-      });
 
-      port.onDisconnect.addListener(() => {
-        controller.abort();
-      });
+        // Build assistant message with text + tool_use blocks
+        const assistantContent = [];
+        if (textContent) {
+          assistantContent.push({ type: 'text', text: textContent });
+        }
+        for (const tc of pendingToolCalls) {
+          assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+        }
+        messages.push({ role: 'assistant', content: assistantContent });
+
+        // Execute all tool calls and collect results
+        const toolResults = [];
+        for (const tc of pendingToolCalls) {
+          console.log(`[Spotify Brainer] Executing tool: ${tc.name}`);
+          safeSend({ type: 'tool_status', toolName: tc.name, status: 'executing' });
+
+          const result = await executeTool(tc.name, tc.input);
+
+          // Compact search results to save tokens
+          let resultContent = result;
+          if (tc.name === 'search' && result.data) {
+            resultContent = compactSearchResult(result.data);
+          }
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tc.id,
+            content: JSON.stringify(resultContent),
+          });
+
+          safeSend({ type: 'tool_status', toolName: tc.name, status: result.error ? 'error' : 'done', result: result.error || 'OK' });
+        }
+
+        // Add tool results to messages for next round
+        messages.push({ role: 'user', content: toolResults });
+
+        // Reset text for next round
+        textContent = '';
+      }
+
+      // If we hit the safety limit
+      safeSend({ type: 'text', content: '\n\n*(Reached maximum tool call rounds)*' });
+      safeSend({ type: 'done', content: '' });
     } catch (e) {
       console.error('[Spotify Brainer] LLM stream error:', e);
-      port.postMessage({ type: 'error', content: e.message });
+      safeSend({ type: 'error', content: e.message });
     }
   });
 });
+
+// Compact search results to only include essential info
+function compactSearchResult(data) {
+  const result = {};
+  if (data.tracks?.items) {
+    result.tracks = data.tracks.items.filter(Boolean).map(t => ({
+      name: t.name,
+      artist: t.artists?.map(a => a.name).join(', '),
+      album: t.album?.name,
+      uri: t.uri,
+      id: t.id,
+      duration_ms: t.duration_ms,
+    }));
+  }
+  if (data.artists?.items) {
+    result.artists = data.artists.items.filter(Boolean).map(a => ({
+      name: a.name,
+      uri: a.uri,
+      id: a.id,
+      followers: a.followers?.total,
+    }));
+  }
+  if (data.albums?.items) {
+    result.albums = data.albums.items.filter(Boolean).map(a => ({
+      name: a.name,
+      artist: a.artists?.map(ar => ar.name).join(', '),
+      uri: a.uri,
+      id: a.id,
+      release_date: a.release_date,
+    }));
+  }
+  if (data.playlists?.items) {
+    result.playlists = data.playlists.items.filter(Boolean).map(p => ({
+      name: p.name,
+      uri: p.uri,
+      id: p.id,
+      tracks: p.tracks?.total,
+    }));
+  }
+  return result;
+}
 
 // --- Test connection ---
 async function handleTestConnection(msg) {
@@ -442,14 +629,12 @@ async function handleTestConnection(msg) {
 // All the data load steps, in order
 const DATA_LOAD_STEPS = [
   { id: 'profile',       label: 'User profile' },
-  { id: 'playback',      label: 'Current playback & queue' },
-  { id: 'playlists',     label: 'Playlists' },
+  { id: 'playlists',     label: 'Playlists & tracks' },
   { id: 'recent',        label: 'Recently played' },
   { id: 'topArtists',    label: 'Top artists (3 time ranges)' },
   { id: 'topTracks',     label: 'Top tracks (3 time ranges)' },
   { id: 'savedTracks',   label: 'Saved tracks (full library)' },
   { id: 'savedAlbums',   label: 'Saved albums' },
-  { id: 'audioFeatures', label: 'Audio features (energy, mood, tempo)' },
   { id: 'intelligence',  label: 'Computing taste profile' },
   { id: 'history',       label: 'Loading historical metrics' },
 ];
@@ -506,6 +691,7 @@ async function fetchNowPlaying(tabId) {
 
 // Full pipeline — only runs when user explicitly clicks Refresh
 async function fetchSpotifyData(tabId) {
+  console.log('[Spotify Brainer] Starting full data pipeline');
   const token = await getAccessToken();
   if (!token) {
     if (tabId) {
@@ -532,46 +718,39 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 1: Current playback & queue
+    // Step 1: Playlists + their tracks (idx 1)
     stepIdx = 1;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     try {
-      const pb = await fetchJson(`${base}/me/player`, headers);
-      if (pb) {
-        spotifyData.nowPlaying = {
-          trackName: pb.item?.name,
-          artist: pb.item?.artists?.map((a) => a.name).join(', '),
-          album: pb.item?.album?.name,
-          isPlaying: pb.is_playing,
-          progress: pb.progress_ms,
-          duration: pb.item?.duration_ms,
-          shuffle: pb.shuffle_state,
-          repeat: pb.repeat_state,
-          trackId: pb.item?.id,
-        };
-        spotifyData.queue = pb.queue || [];
-        sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done',
-          spotifyData.nowPlaying?.trackName ? `"${spotifyData.nowPlaying.trackName}" + ${spotifyData.queue.length} queued` : 'No active playback');
-      } else {
-        sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', 'No active playback');
-      }
-    } catch (e) {
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'error', e.message);
-    }
-
-    // Step 2: Playlists
-    stepIdx = 2;
-    sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
-    try {
       spotifyData.playlists = await fetchAllPages(`${base}/me/playlists?limit=50`, headers);
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', `${spotifyData.playlists.length} playlists`);
+      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading', `${spotifyData.playlists.length} playlists — fetching tracks...`);
+
+      // Fetch tracks for each playlist (with rate limit awareness)
+      let totalTracks = 0;
+      for (let i = 0; i < spotifyData.playlists.length; i++) {
+        const pl = spotifyData.playlists[i];
+        try {
+          const tracks = await fetchAllPages(`${base}/playlists/${pl.id}/items?limit=100`, headers, 20);
+          pl.trackItems = tracks.map(t => t.track || t.item).filter(Boolean);
+          totalTracks += pl.trackItems.length;
+          sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading',
+            `${i + 1}/${spotifyData.playlists.length} playlists (${totalTracks} tracks)`);
+        } catch (plErr) {
+          console.warn(`[Spotify Brainer] Failed to fetch tracks for "${pl.name}":`, plErr.message);
+          pl.trackItems = []; // Skip on error, don't block the whole pipeline
+        }
+        if (i < spotifyData.playlists.length - 1) await sleep(200);
+      }
+      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done',
+        `${spotifyData.playlists.length} playlists, ${totalTracks} tracks`);
     } catch (e) {
+      console.error('[Spotify Brainer] Playlists step failed:', e);
       sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'error', e.message);
     }
     await sleep(500);
 
-    // Step 3: Recently played
-    stepIdx = 3;
+    // Step 2: Recently played
+    stepIdx = 2;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     try {
       const rp = await fetchJson(`${base}/me/player/recently-played?limit=50`, headers);
@@ -582,8 +761,8 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 4: Top artists (sequential to avoid rate limits)
-    stepIdx = 4;
+    // Step 3: Top artists (sequential to avoid rate limits)
+    stepIdx = 3;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     try {
       const taShort = await fetchJson(`${base}/me/top/artists?time_range=short_term&limit=50`, headers);
@@ -597,41 +776,14 @@ async function fetchSpotifyData(tabId) {
         long: taLong?.items || [],
       };
       const total = spotifyData.topArtists.short.length + spotifyData.topArtists.medium.length + spotifyData.topArtists.long.length;
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading', `${total} artists — enriching with genres...`);
-
-      // Enrich artists with full data (genres, popularity) from /v1/artists
-      // The top artists endpoint returns deprecated empty genres — we need the full artist objects
-      const allArtistIds = new Set();
-      for (const a of [...spotifyData.topArtists.short, ...spotifyData.topArtists.medium, ...spotifyData.topArtists.long]) {
-        if (a.id) allArtistIds.add(a.id);
-      }
-      const enrichedMap = {};
-      const idBatches = [...allArtistIds];
-      for (let i = 0; i < idBatches.length; i += 50) {
-        const batch = idBatches.slice(i, i + 50);
-        try {
-          const artistData = await fetchJson(`${base}/artists?ids=${batch.join(',')}`, headers);
-          for (const a of (artistData?.artists || [])) {
-            if (a) enrichedMap[a.id] = a;
-          }
-        } catch {}
-        if (i + 50 < idBatches.length) await sleep(300);
-      }
-      // Replace artists with enriched versions
-      const enrich = (arr) => arr.map((a) => enrichedMap[a.id] || a);
-      spotifyData.topArtists.short = enrich(spotifyData.topArtists.short);
-      spotifyData.topArtists.medium = enrich(spotifyData.topArtists.medium);
-      spotifyData.topArtists.long = enrich(spotifyData.topArtists.long);
-
-      const genreCount = Object.values(enrichedMap).filter((a) => a.genres?.length > 0).length;
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', `${total} artists, ${genreCount} with genres`);
+      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', `${total} artists across 3 ranges`);
     } catch (e) {
       sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'error', e.message);
     }
     await sleep(500);
 
-    // Step 5: Top tracks (sequential to avoid rate limits)
-    stepIdx = 5;
+    // Step 4: Top tracks (sequential to avoid rate limits)
+    stepIdx = 4;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     try {
       const ttShort = await fetchJson(`${base}/me/top/tracks?time_range=short_term&limit=50`, headers);
@@ -651,8 +803,8 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 6: Saved tracks (paginated — can be large)
-    stepIdx = 6;
+    // Step 5: Saved tracks (paginated — can be large)
+    stepIdx = 5;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading', 'This may take a moment for large libraries...');
     try {
       spotifyData.savedTracks = await fetchAllPagesWithProgress(
@@ -665,8 +817,8 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 7: Saved albums
-    stepIdx = 7;
+    // Step 6: Saved albums
+    stepIdx = 6;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     try {
       spotifyData.savedAlbums = await fetchAllPages(`${base}/me/albums?limit=50`, headers);
@@ -676,57 +828,16 @@ async function fetchSpotifyData(tabId) {
     }
     await sleep(500);
 
-    // Step 8: Audio features — pull from top tracks AND saved tracks
-    stepIdx = 8;
-    const allTrackIds = [
-      ...spotifyData.topTracks.medium.map((t) => t.id),
-      ...spotifyData.topTracks.short.map((t) => t.id),
-      ...spotifyData.topTracks.long.map((t) => t.id),
-      ...spotifyData.savedTracks.slice(0, 200).map((t) => t.track?.id),
-      ...spotifyData.recentlyPlayed.map((t) => t.track?.id),
-    ].filter(Boolean);
-    // Deduplicate
-    const uniqueTrackIds = [...new Set(allTrackIds)];
-
-    if (uniqueTrackIds.length) {
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading', `${uniqueTrackIds.length} tracks to analyze`);
-      const batchSize = 100;
-      let fetched = 0;
-      for (let i = 0; i < uniqueTrackIds.length; i += batchSize) {
-        const batch = uniqueTrackIds.slice(i, i + batchSize);
-        try {
-          const features = await fetchJson(`${base}/audio-features?ids=${batch.join(',')}`, headers);
-          if (features?.audio_features) {
-            for (const f of features.audio_features) {
-              if (f) spotifyData.audioFeatures[f.id] = f;
-            }
-            fetched += features.audio_features.filter(Boolean).length;
-          }
-        } catch {}
-        if (i + batchSize < uniqueTrackIds.length) await sleep(400);
-      }
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', `${fetched} tracks analyzed`);
-    } else {
-      sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'skipped', 'No tracks to analyze');
-    }
-
-    // Step 9: Compute intelligence
-    stepIdx = 9;
+    // Step 7: Compute intelligence
+    stepIdx = 7;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
-    const sampleEnriched = spotifyData.topArtists.medium[0];
-    console.log('[Spotify Brainer] Enriched artist sample:', sampleEnriched?.name, 'genres:', sampleEnriched?.genres);
-    console.log('[Spotify Brainer] Artists with genres:',
-      spotifyData.topArtists.medium.filter(a => a.genres?.length > 0).length,
-      '/', spotifyData.topArtists.medium.length);
-    console.log('[Spotify Brainer] Audio features count:', Object.keys(spotifyData.audioFeatures).length);
     const intel = new SpotifyIntelligence();
     intelligence = intel.compute(spotifyData);
-    console.log('[Spotify Brainer] Result — genres:', Object.keys(intelligence.genreDistribution || {}).length, 'mood:', intelligence.moodProfile?.label, 'source:', intelligence.moodProfile?.source);
     const tags = intelligence.personalityTags?.slice(0, 3).join(', ') || 'computed';
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', tags);
 
-    // Step 10: Historical metrics
-    stepIdx = 10;
+    // Step 8: Historical metrics
+    stepIdx = 8;
     sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'loading');
     await computeHistoryMetrics();
     if (historyMetrics?.lifetimeStats?.totalPlays) {
@@ -736,7 +847,8 @@ async function fetchSpotifyData(tabId) {
       sendProgress(tabId, stepIdx, DATA_LOAD_STEPS[stepIdx].label, 'done', 'No GDPR history imported yet');
     }
 
-    // Persist to cache
+    // Record load time and persist to cache
+    lastLoadedAt = Date.now();
     await saveToCache();
 
     // Final: all done
@@ -747,30 +859,19 @@ async function fetchSpotifyData(tabId) {
       });
     }
   } catch (e) {
-    console.error('Failed to fetch Spotify data:', e);
+    console.error('[Spotify Brainer] Failed to fetch Spotify data:', e);
     if (tabId) {
       sendProgress(tabId, stepIdx, 'Error', 'error', e.message);
     }
   }
 }
 
+let lastLoadedAt = null;
+
 function buildContextSummary() {
-  const parts = [];
-  if (spotifyData.nowPlaying) {
-    parts.push(`Playing: "${spotifyData.nowPlaying.trackName}"`);
-  }
-  parts.push(`${spotifyData.playlists.length} playlists`);
-  parts.push(`${spotifyData.savedTracks.length} saved tracks`);
-  if (Object.keys(spotifyData.audioFeatures).length) {
-    parts.push(`${Object.keys(spotifyData.audioFeatures).length} audio profiles`);
-  }
-  if (intelligence?.personalityTags?.length) {
-    parts.push(intelligence.personalityTags.slice(0, 2).join(', '));
-  }
-  if (historyMetrics?.lifetimeStats?.totalPlays) {
-    parts.push(`${historyMetrics.lifetimeStats.totalPlays.toLocaleString()} historical plays`);
-  }
-  return parts.join(' | ') || 'Connected to Spotify';
+  if (!lastLoadedAt) return 'Not loaded yet — click Refresh';
+  const time = new Date(lastLoadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `Loaded: ${time}`;
 }
 
 async function fetchJson(url, headers, retries = 3) {
@@ -864,7 +965,7 @@ async function handleGDPRImport(data, filename) {
   }
 
   await tx.done;
-  console.log(`GDPR import: ${imported} events from ${filename}`);
+  console.log(`[Spotify Brainer] GDPR import complete: ${imported} events from ${filename}`);
 
   // Trigger metrics recomputation and cache
   await computeHistoryMetrics();
@@ -1041,7 +1142,7 @@ async function computeHistoryMetrics() {
       }
     });
   } catch (e) {
-    console.error('Failed to compute history metrics:', e);
+    console.error('[Spotify Brainer] Failed to compute history metrics:', e);
   }
 }
 
