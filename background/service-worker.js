@@ -71,153 +71,29 @@ restoreFromCache();
 // --- System prompt builder ---
 function buildSystemPrompt() {
   const parts = [
-    `You are Spotify Brainer, an AI powered brain for Spotify with deep knowledge of this user's music identity.`,
-    `You have access to their full Spotify data including playlists, listening history, taste profile, and current playback.`,
-    `You can also CONTROL their Spotify — play/pause, skip, search, queue songs, create playlists, save tracks, and more using tools.`,
-    `Use the data below to give specific, data-backed answers. Be conversational and music-savvy.`,
+    `You are Spotify Brainer, an AI assistant with deep knowledge of this user's music identity and full control over their Spotify.`,
+    `You can control playback, search, queue songs, create playlists, save tracks, and more using tools.`,
+    `You also have data-fetching tools to look up the user's profile, top artists/tracks, listening history, playlists, and taste profile — fetch what you need when it's relevant.`,
     `When the user asks to play something, search for it first to get the URI, then play it. Don't ask for confirmation — just do it.`,
     ``,
     `IMPORTANT: When mentioning or suggesting songs, ALWAYS format them as Spotify links using this exact format:`,
     `[Song Name](spotify:track:TRACK_ID) by Artist Name`,
-    `Use the track IDs from the data below when available. If you don't have the track ID, use the format [Song Name](spotify:search:ENCODED_QUERY) where ENCODED_QUERY is the URL-encoded search query for that song.`,
+    `If you don't have the track ID, use [Song Name](spotify:search:ENCODED_QUERY) where ENCODED_QUERY is the URL-encoded search query.`,
     `This allows the user to click the song name to play it directly.`,
   ];
 
-  // Current playback
+  // Current playback — always injected so the LLM knows what's on without a tool call
   if (spotifyData.nowPlaying) {
     const np = spotifyData.nowPlaying;
-    parts.push(`\n## Current Playback`);
-    parts.push(`Now playing: "${np.trackName}" by ${np.artist} from "${np.album}"`);
+    parts.push(`\n## Now Playing`);
+    parts.push(`"${np.trackName}" by ${np.artist} from "${np.album}" | ${np.isPlaying ? 'Playing' : 'Paused'}`);
     if (np.progress && np.duration) {
-      parts.push(`Progress: ${formatMs(np.progress)} / ${formatMs(np.duration)} | Status: ${np.isPlaying ? 'Playing' : 'Paused'}`);
+      parts.push(`${formatMs(np.progress)} / ${formatMs(np.duration)}`);
     }
-    if (np.shuffle !== undefined) {
-      parts.push(`Shuffle: ${np.shuffle ? 'On' : 'Off'} | Repeat: ${np.repeat || 'Off'}`);
-    }
-  }
-
-  // User profile
-  if (spotifyData.userProfile) {
-    const u = spotifyData.userProfile;
-    parts.push(`\n## User Profile`);
-    parts.push(`Name: ${u.display_name || 'Unknown'} | Plan: ${u.product || 'free'} | Country: ${u.country || 'Unknown'}`);
-  }
-
-  // Intelligence layer (computed taste profile)
-  if (intelligence) {
-    parts.push(`\n## Taste DNA (Computed)`);
-    if (intelligence.decadeDistribution) {
-      const decades = Object.entries(intelligence.decadeDistribution)
-        .sort((a, b) => b[1] - a[1])
-        .map(([d, pct]) => `${d} (${Math.round(pct * 100)}%)`)
-        .join(', ');
-      parts.push(`Decade split: ${decades}`);
-    }
-    if (intelligence.discoveryScore !== undefined) {
-      parts.push(`Discovery score: ${intelligence.discoveryScore.toFixed(2)} | Mainstream index: ${intelligence.mainstreamIndex || 'N/A'}`);
-    }
-    if (intelligence.personalityTags?.length) {
-      parts.push(`Personality: ${intelligence.personalityTags.join(', ')}`);
-    }
-    if (intelligence.tempoPreference) {
-      parts.push(`Tempo preference: ${intelligence.tempoPreference}`);
-    }
-  }
-
-  // Historical metrics
-  if (historyMetrics) {
-    parts.push(`\n## Listening History & Trends`);
-    if (historyMetrics.lifetimeStats) {
-      const ls = historyMetrics.lifetimeStats;
-      parts.push(`Based on ${ls.totalYears || '?'} years of data (${ls.totalPlays || '?'} total plays):`);
-      parts.push(`Total listening: ${formatHours(ls.totalMs)} | Unique tracks: ${ls.uniqueTracks} | Unique artists: ${ls.uniqueArtists}`);
-      if (ls.topArtistAllTime) parts.push(`Most played artist all-time: ${ls.topArtistAllTime.name} (${ls.topArtistAllTime.plays} plays)`);
-      if (ls.topTrackAllTime) parts.push(`Most played track all-time: ${ls.topTrackAllTime.name} (${ls.topTrackAllTime.plays} plays)`);
-    }
-    if (historyMetrics.tasteEvolution?.length) {
-      parts.push(`\n### Taste Evolution`);
-      for (const era of historyMetrics.tasteEvolution) {
-        parts.push(`- ${era.period}: ${era.description}`);
-      }
-    }
-    if (historyMetrics.recentTrends) {
-      parts.push(`\n### Recent Trends (last 30 days)`);
-      for (const trend of historyMetrics.recentTrends) {
-        parts.push(`- ${trend}`);
-      }
-    }
-    if (historyMetrics.behavioralPatterns?.length) {
-      parts.push(`\n### Behavioral Patterns`);
-      for (const pattern of historyMetrics.behavioralPatterns) {
-        parts.push(`- ${pattern}`);
-      }
-    }
-  }
-
-  // Top artists (from API)
-  if (spotifyData.topArtists.medium?.length) {
-    parts.push(`\n## Top Artists (6 months)`);
-    parts.push(spotifyData.topArtists.medium.slice(0, 20).map((a, i) => `${i + 1}. ${a.name}`).join('\n'));
-  }
-  if (spotifyData.topArtists.short?.length) {
-    parts.push(`\n## Top Artists (4 weeks)`);
-    parts.push(spotifyData.topArtists.short.slice(0, 20).map((a, i) => `${i + 1}. ${a.name}`).join('\n'));
-  }
-
-  // Top tracks
-  if (spotifyData.topTracks.medium?.length) {
-    parts.push(`\n## Top Tracks (6 months)`);
-    parts.push(spotifyData.topTracks.medium.slice(0, 20).map((t, i) => `${i + 1}. "${t.name}" by ${t.artists?.map(a => a.name).join(', ')}`).join('\n'));
-  }
-
-  // Recently played
-  if (spotifyData.recentlyPlayed?.length) {
-    parts.push(`\n## Recently Played`);
-    parts.push(spotifyData.recentlyPlayed.slice(0, 30).map((t) =>
-      `- "${t.track?.name}" by ${t.track?.artists?.map(a => a.name).join(', ')} (${new Date(t.played_at).toLocaleString()})`
-    ).join('\n'));
-  }
-
-  // Playlists with intelligence
-  if (spotifyData.playlists?.length) {
-    parts.push(`\n## Playlists (${spotifyData.playlists.length} total)`);
-    for (const pl of spotifyData.playlists.slice(0, 50)) {
-      let line = `- "${pl.name}" (${pl.tracks?.total || 0} tracks, id: ${pl.id})`;
-      if (intelligence?.playlistProfiles?.[pl.id]) {
-        const pp = intelligence.playlistProfiles[pl.id];
-        line += ` — cohesion: ${pp.cohesion?.toFixed(2) || '?'}`;
-      }
-      parts.push(line);
-      // Include track listing for each playlist
-      if (pl.trackItems?.length) {
-        for (const t of pl.trackItems.slice(0, 100)) {
-          if (t.name && t.id) parts.push(`  - [${t.name}](spotify:track:${t.id}) — ${t.artists?.map(a => a.name).join(', ') || 'Unknown'}`);
-        }
-        if (pl.trackItems.length > 100) {
-          parts.push(`  - ... and ${pl.trackItems.length - 100} more tracks`);
-        }
-      }
-    }
-  }
-
-  // Library stats
-  if (spotifyData.savedTracks?.length || spotifyData.savedAlbums?.length) {
-    parts.push(`\n## Library`);
-    parts.push(`Saved tracks: ${spotifyData.savedTracks?.length || 0} | Saved albums: ${spotifyData.savedAlbums?.length || 0}`);
-  }
-
-  // Queue
-  if (spotifyData.queue?.length) {
-    parts.push(`\n## Queue (next ${Math.min(spotifyData.queue.length, 20)} tracks)`);
-    parts.push(spotifyData.queue.slice(0, 20).map((t) =>
-      `- "${t.name}" by ${t.artists?.map(a => a.name).join(', ')}`
-    ).join('\n'));
-  }
-
-  // Current view
-  if (spotifyData.currentView) {
-    parts.push(`\n## Current View`);
-    parts.push(`User is viewing: ${spotifyData.currentView}`);
+    if (np.trackId) parts.push(`Track ID: ${np.trackId}`);
+    if (np.shuffle !== undefined) parts.push(`Shuffle: ${np.shuffle ? 'On' : 'Off'} | Repeat: ${np.repeat || 'Off'}`);
+  } else {
+    parts.push(`\n## Now Playing\nNothing playing.`);
   }
 
   return parts.join('\n');
@@ -451,6 +327,78 @@ async function executeTool(toolName, input) {
     const credits = await fetchTrackCredits(trackId);
     if (credits) return { success: true, data: credits };
     return { error: 'Could not scrape credits. Make sure a track is playing in Spotify.' };
+  }
+
+  // Data-fetching tools — return in-memory state, no API calls needed
+  const DATA_TOOLS = {
+    get_user_profile: () => {
+      if (!spotifyData.userProfile) return { error: 'No profile data loaded. Ask the user to refresh their data.' };
+      const u = spotifyData.userProfile;
+      return { success: true, data: { name: u.display_name, plan: u.product, country: u.country, followers: u.followers?.total } };
+    },
+    get_top_artists: () => {
+      const range = input.time_range || 'medium';
+      const artists = spotifyData.topArtists[range];
+      if (!artists?.length) return { error: `No top artists data for range "${range}". Ask the user to refresh.` };
+      return { success: true, data: artists.map((a, i) => ({ rank: i + 1, name: a.name, id: a.id, genres: a.genres })) };
+    },
+    get_top_tracks: () => {
+      const range = input.time_range || 'medium';
+      const tracks = spotifyData.topTracks[range];
+      if (!tracks?.length) return { error: `No top tracks data for range "${range}". Ask the user to refresh.` };
+      return { success: true, data: tracks.map((t, i) => ({ rank: i + 1, name: t.name, id: t.id, artists: t.artists?.map(a => a.name), album: t.album?.name })) };
+    },
+    get_recently_played: () => {
+      if (!spotifyData.recentlyPlayed?.length) return { error: 'No recently played data. Ask the user to refresh.' };
+      return { success: true, data: spotifyData.recentlyPlayed.map(r => ({ name: r.track?.name, id: r.track?.id, artists: r.track?.artists?.map(a => a.name), played_at: r.played_at })) };
+    },
+    get_playlists: () => {
+      if (!spotifyData.playlists?.length) return { error: 'No playlists loaded. Ask the user to refresh.' };
+      return {
+        success: true,
+        data: spotifyData.playlists.map(pl => ({
+          name: pl.name, id: pl.id, total: pl.tracks?.total || 0,
+          tracks: pl.trackItems?.map(t => ({ name: t.name, id: t.id, artists: t.artists?.map(a => a.name) })) || [],
+        })),
+      };
+    },
+    get_library_stats: () => ({
+      success: true,
+      data: { saved_tracks: spotifyData.savedTracks?.length || 0, saved_albums: spotifyData.savedAlbums?.length || 0 },
+    }),
+    get_taste_profile: () => {
+      if (!intelligence) return { error: 'No taste profile computed. Ask the user to refresh their data.' };
+      return { success: true, data: intelligence };
+    },
+    get_history_stats: () => {
+      if (!historyMetrics) return { error: 'No listening history imported. Ask the user to import their Spotify GDPR data export.' };
+      return { success: true, data: { lifetimeStats: historyMetrics.lifetimeStats, listeningEngagement: historyMetrics.listeningEngagement, streaksRecords: historyMetrics.streaksRecords } };
+    },
+    get_history_artists: () => {
+      if (!historyMetrics) return { error: 'No listening history imported.' };
+      return { success: true, data: { artistRelationships: historyMetrics.artistRelationships } };
+    },
+    get_history_temporal: () => {
+      if (!historyMetrics) return { error: 'No listening history imported.' };
+      return { success: true, data: { temporalBehavior: historyMetrics.temporalBehavior } };
+    },
+    get_history_replay: () => {
+      if (!historyMetrics) return { error: 'No listening history imported.' };
+      return { success: true, data: { replayObsession: historyMetrics.replayObsession } };
+    },
+    get_history_taste: () => {
+      if (!historyMetrics) return { error: 'No listening history imported.' };
+      return { success: true, data: { tasteProfile: historyMetrics.tasteProfile, tasteEvolution: historyMetrics.tasteEvolution } };
+    },
+    get_queue: () => {
+      if (!spotifyData.queue?.length) return { success: true, data: [] };
+      return { success: true, data: spotifyData.queue.map(t => ({ name: t.name, id: t.id, artists: t.artists?.map(a => a.name) })) };
+    },
+    get_current_view: () => ({ success: true, data: { view: spotifyData.currentView || 'Unknown' } }),
+  };
+
+  if (DATA_TOOLS[toolName]) {
+    return DATA_TOOLS[toolName]();
   }
 
   const mapping = TOOL_TO_ACTION[toolName];

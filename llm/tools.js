@@ -251,6 +251,96 @@ export const SPOTIFY_TOOLS = [
       },
     },
   },
+
+  // --- Data-fetching tools (read from in-memory state, no API calls) ---
+  {
+    name: 'get_user_profile',
+    description: 'Get the user\'s Spotify profile — display name, plan (free/premium), country, and follower count.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_top_artists',
+    description: 'Get the user\'s top artists for a given time range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        time_range: {
+          type: 'string',
+          enum: ['short', 'medium', 'long'],
+          description: 'short = last 4 weeks, medium = last 6 months, long = all time. Defaults to medium.',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_top_tracks',
+    description: 'Get the user\'s top tracks for a given time range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        time_range: {
+          type: 'string',
+          enum: ['short', 'medium', 'long'],
+          description: 'short = last 4 weeks, medium = last 6 months, long = all time. Defaults to medium.',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_recently_played',
+    description: 'Get the last 50 tracks the user played with timestamps.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_playlists',
+    description: 'Get all of the user\'s playlists with their full track listings.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_library_stats',
+    description: 'Get counts of saved/liked tracks and saved albums in the user\'s library.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_taste_profile',
+    description: 'Get the computed taste intelligence profile — decade distribution, discovery score, personality tags, tempo preference, and playlist profiles.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_history_stats',
+    description: 'Get lifetime listening stats and engagement metrics from GDPR history — total plays, hours, unique tracks/artists, top all-time track/artist, listening engagement score, and streak/record data.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_history_artists',
+    description: 'Get artist relationship data from GDPR history — top artists by play count, artist lifecycles (rising/fading/stable), and new artist discovery rate over time.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_history_temporal',
+    description: 'Get temporal listening patterns from GDPR history — 24-hour heatmap, session stats, night owl score, weekday vs weekend split, and monthly hours listened.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_history_replay',
+    description: 'Get replay obsession data from GDPR history — repeat ratio, binge episodes, and one-and-done tracks.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_history_taste',
+    description: 'Get taste evolution data from GDPR history — monthly top artist, artist concentration (Gini), variety score, and taste evolution periods.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_queue',
+    description: 'Get the current Spotify playback queue (upcoming tracks).',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_current_view',
+    description: 'Get what page or section the user is currently viewing in Spotify.',
+    input_schema: { type: 'object', properties: {} },
+  },
 ];
 
 // Maps tool names to spotify-control action names and param transforms

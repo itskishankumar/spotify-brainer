@@ -2,7 +2,7 @@
 
 AI powered brain for Spotify.
 
-A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and feeds everything into an LLM so it genuinely understands your music identity — and can control your playback.
+A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. It connects to your Spotify account via OAuth, extracts your full listening data (including every track in every playlist), computes a taste profile, and makes it all available to an LLM via on-demand tool calls — so it genuinely understands your music identity and can control your playback.
 
 ## Features
 
@@ -14,8 +14,9 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Clickable song links** — every song the LLM mentions is a playable link
 - **Taste intelligence layer** — decade split, discovery score, personality tags, playlist profiles
 - **Streaming history import** — import your Spotify listening history (both basic Account Data and Extended GDPR formats) with clear/re-import support
+- **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
-- **Smart context compaction** — tiered system that preserves the most relevant data as conversations grow
+- **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
@@ -80,7 +81,7 @@ spotify-brainer/
 ├── llm/
 │   ├── types.js               # Unified LLMRequest/LLMResponse/LLMChunk
 │   ├── adapter.js             # Base adapter interface
-│   ├── tools.js               # Tool definitions for Spotify control
+│   ├── tools.js               # Tool definitions: Spotify control + data-fetching
 │   ├── adapters/
 │   │   ├── anthropic.js       # Claude adapter (with tool use)
 │   │   ├── openai.js          # OpenAI adapter
@@ -110,13 +111,18 @@ GDPR Import  ──→  IndexedDB ──┤
                     computeHistoryMetrics
                               │
                               ▼
-                    buildSystemPrompt()  ──→  LLM (with Spotify tools)
-                              │                        │
-                              │                 tool_use loop
-                              │                        │
-                              ▼                        ▼
-                    LLM Adapter            spotify-controls.js
-                  Claude / OpenAI / Gemini   (play, search, queue, etc.)
+                    buildSystemPrompt()        ←── now playing only
+                              │
+                              ▼
+                         LLM Adapter  ←────────────────────────────┐
+                   Claude / OpenAI / Gemini                         │
+                              │                                     │
+                        tool_use loop                               │
+                         ┌────┴────┐                                │
+                         ▼         ▼                                │
+              spotify-controls  data-fetch tools ──→ in-memory data─┘
+           (play, search, etc.)  (profile, history,
+                                  top tracks, etc.)
 ```
 
 ## Spotify API Notes
