@@ -3,7 +3,7 @@
 
 import { getAdapter } from '../llm/registry.js';
 import { LyriaAdapter } from '../music-gen/adapters/lyria.js';
-import { buildMusicAgentSystemPrompt, assembleLyriaPrompt, buildFallbackLyriaPrompt } from '../music-gen/prompt-builder.js';
+import { buildMusicAgentSystemPrompt, buildAntiTasteSystemPrompt, assembleLyriaPrompt, buildFallbackLyriaPrompt } from '../music-gen/prompt-builder.js';
 import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
@@ -345,7 +345,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'music-generate') {
     (async () => {
       try {
-        const { provider, model, apiKey, userIntent } = msg;
+        const { provider, model, apiKey, userIntent, mode } = msg;
         if (!apiKey) { sendResponse({ error: 'No API key provided.' }); return; }
 
         // 1. Load LLM credentials
@@ -382,9 +382,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             // Phase 2: Execute all tools, compact results, one final LLM call to produce the prompt
             // This is exactly 2 LLM calls max, no ballooning context.
 
+            const buildSystemPrompt = mode === 'anti-taste' ? buildAntiTasteSystemPrompt : buildMusicAgentSystemPrompt;
+            const defaultIntent = mode === 'anti-taste'
+              ? 'Analyze my taste profile and generate a track from my biggest blind spot. Include one familiar anchor element.'
+              : 'Generate a track that reflects my overall taste.';
+
             const planMessages = [
-              { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
-              { role: 'user', content: userIntent?.trim() || 'Generate a track that reflects my overall taste.' },
+              { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
+              { role: 'user', content: userIntent?.trim() || defaultIntent },
             ];
 
             // Phase 1: Ask LLM what data it needs
@@ -461,8 +466,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
               // Phase 2: Single final call with compacted data — produce the prompt
               const finalMessages = [
-                { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
-                { role: 'user', content: `${userIntent?.trim() || 'Generate a track that reflects my overall taste.'}\n\nHere is the data I gathered:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
+                { role: 'system', content: buildSystemPrompt(historyMetrics, spotifyData, intelligence) },
+                { role: 'user', content: `${userIntent?.trim() || defaultIntent}\n\nHere is the data I gathered:\n${collectedData.join('\n\n')}\n\nNow output the Lyria JSON prompt.` },
               ];
 
               const finalResponse = await llmAdapter.sendMessage({
@@ -517,7 +522,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const imgModel = imgModelData[`sb_image_model_${imgProvider}`];
             if (imgKey) {
               const imgAdapter = getImageGenAdapter(imgProvider);
-              const artPrompt = `Album cover art for a music track: ${lyriaPrompt}. Style: abstract, modern, visually striking, no text, no words, no letters.`;
+              const artPrompt = `Album cover art for this music: ${lyriaPrompt}. The visual style and aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition. No text, no words, no letters, no typography, no logos.`;
               const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
               albumArt = { image: imgResult.image, mimeType: imgResult.mimeType };
               console.log('[Spotify Brainer] Album art generated');

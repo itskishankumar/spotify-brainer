@@ -1291,12 +1291,17 @@ body.spotify-brainer-open {
   color: #535353;
 }
 
+.sb-gen-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
 .sb-gen-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
+  flex: 1;
   background: #1DB954;
   border: none;
   border-radius: 24px;
@@ -1306,6 +1311,39 @@ body.spotify-brainer-open {
   padding: 14px 20px;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
+}
+
+.sb-gen-anti-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid #535353;
+  border-radius: 24px;
+  color: #b3b3b3;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.sb-gen-anti-btn:hover:not(:disabled) {
+  border-color: #e85d75;
+  color: #e85d75;
+  background: rgba(232, 93, 117, 0.08);
+}
+
+.sb-gen-anti-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-gen-anti-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .sb-gen-btn:hover:not(:disabled) {
@@ -1353,7 +1391,7 @@ body.spotify-brainer-open {
 
 .sb-gen-album-art {
   width: 100%;
-  max-height: 200px;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 8px;
 }

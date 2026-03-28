@@ -261,10 +261,16 @@
           <textarea id="sb-gen-prompt" class="sb-gen-textarea" placeholder="e.g. &quot;a song I would've liked in Sept 2024&quot;, &quot;something for a late night drive&quot;, &quot;upbeat like my summer playlists&quot;, or leave blank to let AI decide"></textarea>
         </div>
 
-        <button id="sb-gen-btn" class="sb-gen-btn">
-          <span class="sb-gen-btn-icon">${ICONS.generate}</span>
-          <span id="sb-gen-btn-label">Generate</span>
-        </button>
+        <div class="sb-gen-btn-row">
+          <button id="sb-gen-btn" class="sb-gen-btn">
+            <span class="sb-gen-btn-icon">${ICONS.generate}</span>
+            <span id="sb-gen-btn-label">Generate</span>
+          </button>
+          <button id="sb-gen-anti-btn" class="sb-gen-anti-btn" title="Generate something outside your comfort zone">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            Anti-Taste
+          </button>
+        </div>
 
         <div id="sb-gen-status" class="sb-gen-status" style="display:none"></div>
 
@@ -2510,7 +2516,9 @@
     document.addEventListener('mousemove', (e) => { if (scrubbing) scrubTo(e); });
     document.addEventListener('mouseup', () => { scrubbing = false; });
 
-    genBtn.addEventListener('click', async () => {
+    const genAntiBtn = document.getElementById('sb-gen-anti-btn');
+
+    async function doGenerate(mode) {
       if (isGenerating) return;
 
       const provider = (await chrome.storage.local.get('sb_music_provider')).sb_music_provider || 'lyria';
@@ -2524,10 +2532,11 @@
 
       isGenerating = true;
       genBtn.disabled = true;
-      genBtnLabel.textContent = 'Generating...';
+      genAntiBtn.disabled = true;
+      genBtnLabel.textContent = mode === 'anti-taste' ? 'Daring...' : 'Generating...';
       genPlayer.style.display = 'none';
       genSaveRow.style.display = 'none';
-      setStatus('Analysing your taste…');
+      setStatus(mode === 'anti-taste' ? 'Finding your blind spots…' : 'Analysing your taste…');
 
       try {
         const userIntent = genPromptInput.value.trim();
@@ -2537,6 +2546,7 @@
           model,
           userIntent,
           apiKey,
+          mode,
         });
 
         if (resp.error) {
@@ -2548,7 +2558,7 @@
             mimeType: resp.mimeType,
             prompt: resp.prompt,
             albumArt: resp.albumArt || null,
-            userIntent,
+            userIntent: mode === 'anti-taste' ? (userIntent || 'Anti-Taste dare') : userIntent,
             generatedAt: Date.now(),
           };
           showPlayer(pendingSong, true);
@@ -2558,9 +2568,13 @@
       } finally {
         isGenerating = false;
         genBtn.disabled = false;
+        genAntiBtn.disabled = false;
         genBtnLabel.textContent = 'Generate';
       }
-    });
+    }
+
+    genBtn.addEventListener('click', () => doGenerate(null));
+    genAntiBtn.addEventListener('click', () => doGenerate('anti-taste'));
   })();
 
   // --- Init ---

@@ -93,6 +93,59 @@ function buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmT
 }
 
 // ---------------------------------------------------------------------------
+// buildAntiTasteSystemPrompt — instructs the LLM to find the user's blind spots
+// and generate something from genres/styles/decades they never listen to,
+// while keeping just enough familiar elements to make it palatable.
+// ---------------------------------------------------------------------------
+export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intelligence, lastfmTags = []) {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [];
+
+  lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria, running in ANTI-TASTE mode.`);
+  lines.push('');
+  lines.push('Your job: Generate a track from the user\'s BLIND SPOTS — genres, decades, tempos, and styles they almost never listen to. A musical dare.');
+  lines.push('');
+  lines.push('## Step 1: Map what the user DOES listen to');
+  lines.push('Use tools to gather the user\'s full taste profile:');
+  lines.push('- Call get_taste_profile for personality tags, decade distribution, tempo preference');
+  lines.push('- Call get_top_artists (short + long term) to see their artist range');
+  lines.push('- Call get_lastfm_tags for those artists to see exact genres/moods/styles');
+  lines.push('- Call get_history_taste for overall listening patterns');
+  lines.push('');
+  lines.push('## Step 2: Identify what\'s MISSING');
+  lines.push('Analyze the data and find the gaps:');
+  lines.push('- **Absent genres**: Major genres with zero or near-zero representation (e.g. if they never listen to jazz, classical, metal, country, reggae, electronic, etc.)');
+  lines.push('- **Avoided decades**: Decades with no plays (e.g. 60s, 70s, 80s)');
+  lines.push('- **Tempo blind spots**: If they only listen to 80-100 BPM, try 140+. If all fast, try slow.');
+  lines.push('- **Missing moods**: If all melancholic, go euphoric. If all aggressive, go gentle.');
+  lines.push('- **Missing production styles**: If all polished pop, go raw/lo-fi. If all acoustic, go heavily synthesized.');
+  lines.push('');
+  lines.push('## Step 3: Build the anti-taste prompt');
+  lines.push('Pick ONE absent genre/style as the primary direction. Then:');
+  lines.push('- Base the track firmly in that unfamiliar territory (genre, instruments, production)');
+  lines.push('- Add ONE familiar element as an anchor — a mood they gravitate toward, a tempo range they know, or a production texture from their comfort zone');
+  lines.push('- This single familiar element makes the dare palatable without diluting the novelty');
+  lines.push('');
+  lines.push('## Lyria output rules');
+  lines.push('- NEVER include artist names, band names, song titles, or album names');
+  lines.push('- Use generic instrument descriptions');
+  lines.push('- Be specific about the unfamiliar genre\'s authentic characteristics');
+  lines.push('');
+  lines.push('## Output format');
+  lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"antiTasteReason":"1 sentence explaining what blind spot this targets and what familiar anchor was kept"}');
+  lines.push('');
+
+  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
+  if (Object.keys(ctx).length) {
+    lines.push('## Current taste profile (this is what you\'re breaking away FROM)');
+    lines.push(JSON.stringify(ctx, null, 2));
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // assembleLyriaPrompt — turns the LLM's JSON fields into a Lyria-ready string.
 // ---------------------------------------------------------------------------
 export function assembleLyriaPrompt(fields) {

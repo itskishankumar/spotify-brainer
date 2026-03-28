@@ -36,7 +36,7 @@ export class ImagenAdapter extends ImageGenAdapter {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         instances: [{ prompt: request.prompt }],
-        parameters: { sampleCount: 1 },
+        parameters: { sampleCount: 1, aspectRatio: '1:1' },
       }),
     });
 
