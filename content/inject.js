@@ -339,7 +339,7 @@
           </div>
           <div class="sb-gen-prompt-preview">
             <details>
-              <summary>View Lyria prompt</summary>
+              <summary>View System prompt</summary>
               <p id="sb-gen-prompt-used"></p>
             </details>
           </div>
@@ -2134,7 +2134,8 @@
         loadStepsState = msg.steps.map((s) => ({ ...s, status: 'pending', detail: '' }));
       }
 
-      // Update the specific step
+      // Update the specific step (ignore if steps not initialized yet)
+      if (loadStepsState.length === 0 && !msg.steps) return;
       if (loadStepsState[msg.step]) {
         loadStepsState[msg.step].status = msg.status;
         loadStepsState[msg.step].detail = msg.detail || '';
@@ -2384,6 +2385,12 @@
 
     function loadAudio(base64, mimeType) {
       if (audio) { audio.pause(); audio = null; }
+      // Reset player UI to stopped state before creating new audio
+      genPlayBtn.innerHTML = ICONS.play;
+      genScrubberFill.style.width = '0%';
+      genScrubberThumb.style.left = '0%';
+      genTimeCur.textContent = '0:00';
+      genTimeTotal.textContent = '0:00';
       audio = new Audio(`data:${mimeType || 'audio/mp3'};base64,${base64}`);
 
       audio.addEventListener('loadedmetadata', () => {
@@ -2726,7 +2733,6 @@
       if (audio.paused) {
         audio.play();
         genPlayBtn.innerHTML = ICONS.pause;
-        genWaveform.classList.add('playing');
       } else {
         audio.pause();
         genPlayBtn.innerHTML = ICONS.play;
@@ -2821,6 +2827,12 @@
     genBtn.addEventListener('click', () => doGenerate(null));
     genAntiBtn.addEventListener('click', () => doGenerate('anti-taste'));
     document.getElementById('sb-gen-future-btn').addEventListener('click', () => doGenerate('future-taste'));
+    genPromptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        doGenerate(null);
+      }
+    });
   })();
 
   // --- Init ---

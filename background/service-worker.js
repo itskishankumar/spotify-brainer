@@ -313,11 +313,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'gdpr-import') {
     handleGDPRImport(msg.data, msg.filename).then((imported) => {
       // Update the history progress step on all Spotify tabs
+      // Send without steps array so we don't reset the full step list
       if (historyMetrics?.lifetimeStats?.totalPlays) {
         chrome.tabs.query({ url: 'https://open.spotify.com/*' }, (tabs) => {
           for (const tab of tabs) {
-            sendProgress(tab.id, 8, DATA_LOAD_STEPS[8].label, 'done',
-              `${historyMetrics.lifetimeStats.totalPlays.toLocaleString()} plays over ${historyMetrics.lifetimeStats.totalYears} years`);
+            chrome.tabs.sendMessage(tab.id, {
+              type: 'spotify-load-progress',
+              step: 8,
+              totalSteps: DATA_LOAD_STEPS.length,
+              stepLabel: DATA_LOAD_STEPS[8].label,
+              status: 'done',
+              detail: `${historyMetrics.lifetimeStats.totalPlays.toLocaleString()} plays over ${historyMetrics.lifetimeStats.totalYears} years`,
+            }).catch(() => {});
           }
         });
       }
@@ -383,7 +390,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               'add_to_playlist', 'create_playlist', 'save_tracks', 'remove_saved_tracks',
               'get_track_credits',
             ]);
-            const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) => !PLAYBACK_TOOLS.has(t.name));
+            let MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) => !PLAYBACK_TOOLS.has(t.name));
+            // Anti-taste doesn't need history or drift tools — only taste profile and top artists
+            if (mode === 'anti-taste') {
+              const ANTI_TASTE_EXCLUDE = new Set(['get_history_taste', 'get_taste_drift']);
+              MUSIC_TOOLS = MUSIC_TOOLS.filter((t) => !ANTI_TASTE_EXCLUDE.has(t.name));
+            }
 
             // Two-phase approach:
             // Phase 1: One LLM call to decide which tools to call (returns tool calls)
@@ -481,13 +493,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 collectedData.push(compactToolResult(tc.name, tc.input, result));
               }
 
-              // For anti-taste and future-taste, always inject taste drift data
-              // so the LLM has it even if it didn't call the tool in Phase 1
-              if (mode === 'future-taste' && intelligence?.tasteDrift) {
+              // For future-taste, always inject critical data the LLM may have skipped
+              if (mode === 'future-taste') {
+                // Always inject taste drift (via tool handler so historyMetrics fallback runs)
                 const hasDriftData = collectedData.some((d) => d.startsWith('get_taste_drift'));
                 if (!hasDriftData) {
-                  const driftResult = { success: true, data: intelligence.tasteDrift };
+                  const driftResult = await executeTool('get_taste_drift', {});
                   collectedData.push(compactToolResult('get_taste_drift', {}, driftResult));
+                }
+                // Always inject history taste if available
+                if (historyMetrics) {
+                  const hasHistoryData = collectedData.some((d) => d.startsWith('get_history_taste'));
+                  if (!hasHistoryData) {
+                    const histResult = { success: true, data: { tasteProfile: historyMetrics.tasteProfile, tasteEvolution: historyMetrics.tasteEvolution } };
+                    collectedData.push(compactToolResult('get_history_taste', {}, histResult));
+                  }
                 }
               }
 
@@ -563,7 +583,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (!imgKey) return;
             genProgress('Generating album art…');
             const imgAdapter = getImageGenAdapter(imgProvider);
-            const artPrompt = `Abstract album cover art for this music: ${capturedLyriaPrompt}. The visual style and aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition. Purely visual and abstract — absolutely no text, no words, no letters, no numbers, no typography, no logos, no writing, no titles, no symbols that resemble text anywhere in the image.`;
+            // Strip technical parameters (BPM, key, time signature, etc.) from the Lyria prompt
+            // so the image model doesn't render them as text in the artwork
+            const artDescription = capturedLyriaPrompt
+              .replace(/\d+\s*bpm/gi, '')
+              .replace(/\b[A-G][#b]?\s*(major|minor|dorian|phrygian|lydian|mixolydian|aeolian|locrian|pentatonic|chromatic|harmonic\s*minor|melodic\s*minor)\b/gi, '')
+              .replace(/\b\d+\/\d+\s*(time)?\b/gi, '')
+              .replace(/\b(tempo|key|bpm|time signature)[:\s]*[^\s,.]*/gi, '')
+              .replace(/\s{2,}/g, ' ')
+              .trim();
+            const artPrompt = `Abstract album cover artwork. Visual style: ${artDescription}. The aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition using only shapes, colors, textures, light, and patterns. Do not include any text, letters, words, numbers, typography, logos, or writing anywhere in the image.`;
             const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
             console.log('[Spotify Brainer] Album art generated');
             if (genTabId) {
@@ -741,8 +770,18 @@ function compactToolResult(toolName, input, result) {
       const parts = [];
       parts.push('=== Spotify API Drift (short vs long term) ===');
       if (d.velocity != null) parts.push(`Velocity: ${d.velocity}% (how fast taste is changing)`);
-      if (d.emerging?.length) parts.push(`Emerging artists: ${d.emerging.map((a) => a.name).join(', ')}`);
-      if (d.fading?.length) parts.push(`Fading artists: ${d.fading.map((a) => a.name).join(', ')}`);
+      if (d.emerging?.length) parts.push(`Emerging artists: ${d.emerging.map((a) => {
+        let s = a.name;
+        if (a.shareChange) s += ` (${a.shareChange}${a.momentum > 0 ? ' ↗' : a.momentum < 0 ? ' ↘' : ''})`;
+        if (a.source === 'history') s += ' [history]';
+        return s;
+      }).join(', ')}`);
+      if (d.fading?.length) parts.push(`Fading artists: ${d.fading.map((a) => {
+        let s = a.name;
+        if (a.shareChange) s += ` (${a.shareChange})`;
+        if (a.source === 'history') s += ' [history]';
+        return s;
+      }).join(', ')}`);
       if (d.stable?.length) parts.push(`Stable core: ${d.stable.map((a) => a.name).join(', ')}`);
       if (d.genreDrift?.rising?.length) parts.push(`Rising genres: ${d.genreDrift.rising.map((g) => `${g.genre} (+${g.delta}%)`).join(', ')}`);
       if (d.genreDrift?.declining?.length) parts.push(`Declining genres: ${d.genreDrift.declining.map((g) => `${g.genre} (${g.delta}%)`).join(', ')}`);
@@ -750,12 +789,27 @@ function compactToolResult(toolName, input, result) {
       // Historical drift from GDPR data
       if (d.historical) {
         const h = d.historical;
-        parts.push('\n=== Historical Drift (GDPR listening data) ===');
+        parts.push('\n=== Historical Drift (listening history) ===');
         if (h.periodCoverage) parts.push(`Data: ${h.periodCoverage.total} plays (12m: ${h.periodCoverage.last12m}, 3m: ${h.periodCoverage.last3m}, 1m: ${h.periodCoverage.last1m})`);
-        if (h.risingArtists?.length) parts.push(`Rising artists (12m→3m): ${h.risingArtists.map((a) => `${a.name} (${a.share12m}%→${a.share3m}%${a.momentum > 0 ? ' ↗' : a.momentum < 0 ? ' ↘' : ''})`).join(', ')}`);
-        if (h.fadingArtists?.length) parts.push(`Fading artists (12m→3m): ${h.fadingArtists.map((a) => `${a.name} (${a.share12m}%→${a.share3m}%)`).join(', ')}`);
-        if (h.newDiscoveries?.length) parts.push(`New discoveries (last 3m): ${h.newDiscoveries.map((a) => `${a.name} (${a.plays} plays)`).join(', ')}`);
-        if (h.concentration) parts.push(`Artist concentration: top-10 share ${h.concentration.baseline}%→${h.concentration.recent}% (${h.concentration.delta > 0 ? '+' : ''}${h.concentration.delta}%)`);
+        if (h.risingArtists?.length) {
+          const fmt = h.risingArtists.map((a) => a.share12m != null
+            ? `${a.name} (${a.share12m}%→${a.share3m}%${a.momentum > 0 ? ' ↗' : a.momentum < 0 ? ' ↘' : ''})`
+            : `${a.name}${a.plays ? ` (${a.plays} plays)` : ''}`);
+          parts.push(`Rising artists: ${fmt.join(', ')}`);
+        }
+        if (h.fadingArtists?.length) {
+          const fmt = h.fadingArtists.map((a) => a.share12m != null
+            ? `${a.name} (${a.share12m}%→${a.share3m}%)`
+            : `${a.name}${a.plays ? ` (${a.plays} plays)` : ''}`);
+          parts.push(`Fading artists: ${fmt.join(', ')}`);
+        }
+        if (h.newDiscoveries?.length) parts.push(`New discoveries: ${h.newDiscoveries.map((a) => `${a.name} (${a.plays} plays)`).join(', ')}`);
+        if (h.recentMonthlyTopArtists?.length) parts.push(`Recent monthly top artists: ${h.recentMonthlyTopArtists.map((m) => `${m.month}: ${m.artist}`).join(', ')}`);
+        if (h.concentration) {
+          const c = h.concentration;
+          if (c.baseline != null) parts.push(`Artist concentration: top-10 share ${c.baseline}%→${c.recent}% (${c.delta > 0 ? '+' : ''}${c.delta}%)`);
+          else parts.push(`Artist concentration: top 1% (${c.top1PctArtists} artists) = ${c.top1PctSharePct}% of plays, top 10% (${c.top10PctArtists}) = ${c.top10PctSharePct}%`);
+        }
         if (h.volumeTrend?.length) parts.push(`Monthly volume: ${h.volumeTrend.map((m) => `${m.month}: ${m.plays}`).join(', ')}`);
       }
       if (d.predictions?.length) parts.push(`\nPredictions:\n${d.predictions.map((p) => `  - ${p}`).join('\n')}`);
@@ -860,11 +914,46 @@ async function executeTool(toolName, input) {
         const drift = intel.computeTasteDrift(spotifyData, histEvents);
         if (drift) {
           if (intelligence) intelligence.tasteDrift = drift;
-          return { success: true, data: drift };
         }
       }
       if (!intelligence?.tasteDrift) return { error: 'No taste drift data. Load your Spotify data first.' };
-      return { success: true, data: intelligence.tasteDrift };
+
+      // Supplement with historyMetrics data if historical drift is missing
+      const drift = { ...intelligence.tasteDrift };
+      if (!drift.historical && historyMetrics) {
+        const hm = {};
+        // Build rising/fading from tasteEvolution (yearly top artists)
+        if (historyMetrics.tasteEvolution?.length >= 2) {
+          const years = historyMetrics.tasteEvolution;
+          const recent = years[years.length - 1];
+          const older = years.length >= 3 ? years[years.length - 3] : years[years.length - 2];
+          if (recent?.topArtists && older?.topArtists) {
+            const olderNames = new Set(older.topArtists.map(a => a.name || a));
+            const recentNames = new Set(recent.topArtists.map(a => a.name || a));
+            hm.risingArtists = recent.topArtists
+              .filter(a => !olderNames.has(a.name || a))
+              .slice(0, 10)
+              .map(a => ({ name: a.name || a, plays: a.plays || 0 }));
+            hm.fadingArtists = older.topArtists
+              .filter(a => !recentNames.has(a.name || a))
+              .slice(0, 10)
+              .map(a => ({ name: a.name || a, plays: a.plays || 0 }));
+          }
+        }
+        // Monthly top artist trend
+        if (historyMetrics.tasteProfile?.monthlyTopArtist) {
+          const monthly = historyMetrics.tasteProfile.monthlyTopArtist;
+          const months = Object.keys(monthly).sort();
+          const recentMonths = months.slice(-6);
+          hm.recentMonthlyTopArtists = recentMonths.map(m => ({ month: m, artist: monthly[m] }));
+        }
+        // Concentration trend
+        if (historyMetrics.tasteProfile?.concentration) {
+          hm.concentration = historyMetrics.tasteProfile.concentration;
+        }
+        if (Object.keys(hm).length) drift.historical = hm;
+      }
+      return { success: true, data: drift };
     },
     get_history_stats: async () => {
       if (!historyMetrics && !input.from && !input.to) return { error: 'No listening history imported. Ask the user to import their Spotify GDPR data export.' };

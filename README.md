@@ -19,11 +19,11 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
 - **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; two-phase agentic loop (plan tools → execute all → compact results → final prompt) minimizes LLM calls and context usage; save and replay clips with a built-in audio player
-- **Anti-Taste mode** — generates music from your blind spots; analyzes your full taste profile to find genres, decades, tempos, and styles you never listen to; a code-side randomizer selects candidates from a pool of ~200 subgenres across 9 categories (global, electronic, heavy, experimental, jazz, classical, retro, urban, folk), ensuring variety across runs; adds one familiar anchor element to keep the dare palatable
-- **Future Me mode** — predicts where your taste is heading in 3-6 months and generates a track from that predicted future; uses the taste drift vector (Spotify API drift + GDPR historical drift) to extrapolate rising genres, emerging artists, and shifting preferences forward; velocity-aware boldness (high velocity = bold extrapolation, low = conservative)
-- **Taste drift analysis** — computes a taste drift vector from two data sources: (1) Spotify API drift comparing long-term vs short-term top artists/tracks for genre shifts, decade shifts, popularity drift, and velocity; (2) GDPR historical drift comparing actual play counts across 12-month, 3-month, and 1-month windows for rising/fading artists with momentum indicators, new discoveries, artist concentration changes, and monthly volume trends
+- **Anti-Taste mode** — generates music from your blind spots; analyzes your full taste profile to find genres, decades, tempos, and styles you never listen to; a code-side randomizer selects candidates from a pool of ~200 subgenres across 9 categories (global, electronic, heavy, experimental, jazz, classical, retro, urban, folk), ensuring variety across runs; adds one familiar anchor element to keep the dare palatable; excluded from history/drift tools to ensure pure blind-spot exploration
+- **Future Me mode** — predicts where your taste is heading in 3-6 months and generates a track from that predicted future; uses the unified taste drift vector (Spotify API drift + GDPR historical drift merged into top-level emerging/fading) to extrapolate rising genres, emerging artists, and shifting preferences forward; velocity-aware boldness (high velocity = bold extrapolation, low = conservative); auto-injects drift and history data if the LLM doesn't request them
+- **Taste drift analysis** — computes a unified taste drift vector from two data sources merged into top-level emerging/fading lists: (1) Spotify API drift comparing long-term vs short-term top artists/tracks for genre shifts, decade shifts, popularity drift, and velocity; (2) GDPR historical drift comparing actual play counts across 12-month, 3-month, and 1-month windows for rising/fading artists with momentum indicators, new discoveries, artist concentration changes, and monthly volume trends; source-tagged (`api`/`history`) so the LLM knows provenance
 - **Generation insights** — Anti-Taste and Future Me modes display the LLM's reasoning explaining what metrics drove the generation
-- **Album art generation** — automatically generates album cover art for each music clip using Nano Banana (Google Imagen); art displays in the player and as thumbnails in the saved clips library
+- **Album art generation** — automatically generates album cover art for each music clip using Nano Banana (Google Imagen); art generates asynchronously (non-blocking) and arrives after audio with a diffusion-style blur-to-sharp reveal animation; displays in the player and as thumbnails in the saved tracks library
 - **Video generation** — on-demand music video generation using Veo (Google AI); generates abstract cinematic visuals from the Lyria prompt; async generation with polling (handles multi-minute Veo processing); inline video player with native controls
 - **MP3 export** — export any generated clip as an MP3 file with embedded ID3v2 tags (title, artist, cover art); playable in any music player with metadata intact
 - **Song management** — rename saved songs inline (click the pencil icon); click anywhere on a library item to load it; unlimited saved songs with scrollable library
@@ -96,7 +96,7 @@ When configured, the music generation pipeline fetches crowd-sourced tags from L
    - Playlist-based: "generate something like my G playlist"
    - Or leave blank to use your overall taste profile
 5. The LLM gathers the relevant data (playlists, history, top tracks), fetches Last.fm tags for sonic context, and produces a detailed Lyria prompt
-6. Save clips you like — they're stored locally and accessible from the library
+6. Save tracks you like — they're stored locally and accessible from the library
 7. Use **Anti-Taste** to generate from your blind spots — genres and styles you never listen to
 8. Use **Future Me** to generate a track from your predicted future taste based on drift analysis
 9. **Export** any clip as an MP3 with embedded cover art and title metadata
@@ -106,7 +106,7 @@ When configured, the music generation pipeline fetches crowd-sourced tags from L
 1. In Settings → Album Art Generation, select Nano Banana (Google AI) and a model
 2. Enter your API key (same Google AI key works)
 3. When configured, album art is **automatically generated** alongside every music clip
-4. Art displays at the top of the player and as thumbnails in the saved clips library
+4. Art displays at the top of the player and as thumbnails in the saved tracks library
 
 ### 8. Video generation (optional)
 
