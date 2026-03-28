@@ -149,6 +149,22 @@
       </div>
 
       <div class="sb-settings-section">
+        <div class="sb-settings-section-title">Music Enrichment (Last.fm)</div>
+        <div class="sb-settings-group">
+          <label>API Key</label>
+          <input type="password" id="sb-lastfm-api-key" placeholder="Enter your Last.fm API key" />
+          <span class="sb-settings-hint">
+            Optional. Adds genre/mood/style tags to improve music generation.
+            Get a free key at <a href="https://www.last.fm/api/account/create" target="_blank" style="color:#1DB954">last.fm/api</a>
+          </span>
+        </div>
+        <div class="sb-test-row">
+          <button class="sb-test-btn" id="sb-test-lastfm">Test Connection</button>
+          <span class="sb-test-status" id="sb-test-lastfm-status"></span>
+        </div>
+      </div>
+
+      <div class="sb-settings-section">
         <div class="sb-settings-section-title">Data Import</div>
         <div class="sb-settings-group">
           <label>Streaming History Import</label>
@@ -1002,6 +1018,42 @@
         status.textContent = result.error || 'Failed';
         status.className = 'sb-test-status sb-test-error';
       }
+    } catch (e) {
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      status.textContent = e.message;
+      status.className = 'sb-test-status sb-test-error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'sb-test-status'; }, 10000);
+  });
+
+  // --- Last.fm API key ---
+  const lastfmApiKeyInput = document.getElementById('sb-lastfm-api-key');
+  chrome.storage.local.get('sb_apiKey_lastfm', (data) => {
+    if (data.sb_apiKey_lastfm) lastfmApiKeyInput.value = data.sb_apiKey_lastfm;
+  });
+  lastfmApiKeyInput.addEventListener('change', () => {
+    chrome.storage.local.set({ sb_apiKey_lastfm: lastfmApiKeyInput.value });
+  });
+  document.getElementById('sb-test-lastfm').addEventListener('click', async () => {
+    const btn = document.getElementById('sb-test-lastfm');
+    const status = document.getElementById('sb-test-lastfm-status');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    status.textContent = '';
+    status.className = 'sb-test-status';
+    try {
+      const key = lastfmApiKeyInput.value.trim();
+      if (!key) throw new Error('No API key entered');
+      const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=artist.getTopTags&artist=Radiohead&api_key=${key}&format=json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || 'Invalid API key');
+      const tagCount = data.toptags?.tag?.length || 0;
+      btn.textContent = 'Test Connection';
+      btn.disabled = false;
+      status.textContent = `Connected (${tagCount} tags found)`;
+      status.className = 'sb-test-status sb-test-success';
     } catch (e) {
       btn.textContent = 'Test Connection';
       btn.disabled = false;

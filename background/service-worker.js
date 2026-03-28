@@ -8,6 +8,7 @@ import { SpotifyIntelligence } from '../lib/spotify-intelligence.js';
 import { CONTROLS } from '../lib/spotify-controls.js';
 import { SPOTIFY_TOOLS, TOOL_TO_ACTION } from '../llm/tools.js';
 import { getAccessToken, isLoggedIn, startLogin, logout, getClientId, setClientId } from '../lib/spotify-auth.js';
+import { initLastFmCache, enrichArtistsWithTags, enrichTracksWithTags, aggregateTopTags, getLastFmApiKey } from '../lib/lastfm.js';
 
 const MUSIC_GEN_ADAPTERS = { lyria: new LyriaAdapter() };
 function getMusicGenAdapter(name) {
@@ -76,6 +77,7 @@ async function restoreFromCache() {
 
 // Restore cache on service worker startup
 restoreFromCache();
+initLastFmCache();
 
 // --- System prompt builder ---
 function buildSystemPrompt() {
@@ -346,22 +348,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 2. Agentic loop — the LLM parses the user's intent, calls get_history_taste
         //    with date params if a time period is mentioned, then uses its music knowledge
         //    of the returned artists/tracks to output a Lyria JSON prompt.
+        //    Last.fm tags are fetched lazily inside tool calls (get_history_taste, get_top_artists),
+        //    not pre-fetched here, to avoid delaying the LLM start.
         let lyriaPrompt = null;
         if (llmAdapter) {
           try {
-            const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) =>
-              ['get_history_taste', 'get_history_artists', 'get_top_artists', 'get_top_tracks'].includes(t.name)
-            );
+            // Exclude playback control tools — music gen only needs data-fetching + Last.fm tags
+            const PLAYBACK_TOOLS = new Set([
+              'play_track', 'pause', 'skip_next', 'skip_previous', 'seek',
+              'set_volume', 'set_shuffle', 'set_repeat', 'add_to_queue',
+              'get_devices', 'transfer_playback',
+              'add_to_playlist', 'create_playlist', 'save_tracks', 'remove_saved_tracks',
+              'get_track_credits',
+            ]);
+            const MUSIC_TOOLS = SPOTIFY_TOOLS.filter((t) => !PLAYBACK_TOOLS.has(t.name));
             const messages = [
               { role: 'system', content: buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) },
               { role: 'user', content: userIntent?.trim() || 'Generate a track that reflects my overall taste.' },
             ];
 
-            const MAX_ROUNDS = 3;
+            const MAX_ROUNDS = 5;
             for (let round = 0; round < MAX_ROUNDS; round++) {
               const response = await llmAdapter.sendMessage({
                 model: llmModel,
-                maxTokens: 300,
+                maxTokens: 600,
                 temperature: 0.3,
                 messages,
                 tools: MUSIC_TOOLS,
@@ -397,7 +407,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         if (!lyriaPrompt) {
-          lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence });
+          // Fallback: no LLM or LLM failed — fetch Last.fm tags here for the fallback builder
+          let fallbackLastfmTags = [];
+          const lastfmKey = await getLastFmApiKey();
+          if (lastfmKey) {
+            try {
+              const baselineArtists = (intelligence?.topArtistsAllTime?.slice(0, 10) || []).map((a) => ({ name: a.name, plays: a.plays || 1 }));
+              if (baselineArtists.length) {
+                await enrichArtistsWithTags(baselineArtists, lastfmKey);
+                fallbackLastfmTags = aggregateTopTags(baselineArtists);
+              }
+            } catch (e) {
+              console.warn('[Spotify Brainer] Last.fm fallback enrichment failed:', e.message);
+            }
+          }
+          lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence, lastfmTags: fallbackLastfmTags });
         }
 
         const musicAdapter = getMusicGenAdapter(provider);
@@ -444,11 +468,14 @@ async function executeTool(toolName, input) {
       const u = spotifyData.userProfile;
       return { success: true, data: { name: u.display_name, plan: u.product, country: u.country, followers: u.followers?.total } };
     },
-    get_top_artists: () => {
+    get_top_artists: async () => {
       const range = input.time_range || 'medium';
       const artists = spotifyData.topArtists[range];
       if (!artists?.length) return { error: `No top artists data for range "${range}". Ask the user to refresh.` };
-      return { success: true, data: artists.map((a, i) => ({ rank: i + 1, name: a.name, id: a.id, genres: a.genres })) };
+      const mapped = artists.map((a, i) => ({ rank: i + 1, name: a.name, id: a.id, genres: a.genres }));
+      const lastfmKey = await getLastFmApiKey();
+      if (lastfmKey) await enrichArtistsWithTags(mapped.slice(0, 10), lastfmKey);
+      return { success: true, data: mapped };
     },
     get_top_tracks: () => {
       const range = input.time_range || 'medium';
@@ -520,9 +547,48 @@ async function executeTool(toolName, input) {
       if (input.from || input.to) {
         const events = await getEventsInRange(input.from, input.to);
         const stats = computePeriodStats(events);
-        return stats.error ? { error: stats.error } : { success: true, data: { period: stats.period, topArtists: stats.topArtists.slice(0, 10), topTracks: stats.topTracks, peakHour: stats.peakHour, nightOwlPct: stats.nightOwlPct, repeatRatio: stats.repeatRatio, totalPlays: stats.totalPlays, totalHours: stats.totalHours } };
+        if (stats.error) return { error: stats.error };
+        const topArtistSlice = stats.topArtists.slice(0, 10);
+        const topTrackSlice = stats.topTracks;
+        const lastfmKey = await getLastFmApiKey();
+        if (lastfmKey) {
+          await enrichArtistsWithTags(topArtistSlice, lastfmKey);
+          await enrichTracksWithTags(topTrackSlice, lastfmKey);
+          console.log('[Spotify Brainer] Last.fm tags enriched for period artists + tracks');
+        }
+        const lastfmTags = lastfmKey ? aggregateTopTags([...topArtistSlice, ...topTrackSlice]) : [];
+        return { success: true, data: { period: stats.period, topArtists: topArtistSlice, topTracks: topTrackSlice, peakHour: stats.peakHour, nightOwlPct: stats.nightOwlPct, repeatRatio: stats.repeatRatio, totalPlays: stats.totalPlays, totalHours: stats.totalHours, ...(lastfmTags.length ? { lastfmTags: lastfmTags.map(t => t.name) } : {}) } };
       }
       return { success: true, data: { tasteProfile: historyMetrics.tasteProfile, tasteEvolution: historyMetrics.tasteEvolution } };
+    },
+    get_lastfm_tags: async () => {
+      const lastfmKey = await getLastFmApiKey();
+      if (!lastfmKey) return { error: 'No Last.fm API key configured. Ask the user to add one in Settings.' };
+      const result = { artistTags: {}, trackTags: {} };
+      // Fetch artist tags
+      if (input.artists?.length) {
+        const artistObjs = input.artists.map((name) => ({ name }));
+        await enrichArtistsWithTags(artistObjs, lastfmKey);
+        for (const a of artistObjs) {
+          if (a.lastfmTags?.length) result.artistTags[a.name] = a.lastfmTags.map((t) => t.name);
+        }
+      }
+      // Fetch track tags
+      if (input.tracks?.length) {
+        const trackObjs = input.tracks.map((t) => ({ name: `${t.track} \u2014 ${t.artist}` }));
+        await enrichTracksWithTags(trackObjs, lastfmKey);
+        for (let i = 0; i < input.tracks.length; i++) {
+          const tags = trackObjs[i].lastfmTags;
+          if (tags?.length) result.trackTags[`${input.tracks[i].track} — ${input.tracks[i].artist}`] = tags.map((t) => t.name);
+        }
+      }
+      // Aggregate across everything
+      const allItems = [
+        ...(input.artists || []).map((name) => ({ lastfmTags: (result.artistTags[name] || []).map((n) => ({ name: n, count: 50 })), plays: 1 })),
+        ...Object.values(result.trackTags).map((tags) => ({ lastfmTags: tags.map((n) => ({ name: n, count: 50 })), plays: 1 })),
+      ];
+      result.aggregatedTags = aggregateTopTags(allItems).map((t) => t.name);
+      return { success: true, data: result };
     },
     get_queue: () => {
       if (!spotifyData.queue?.length) return { success: true, data: [] };

@@ -362,6 +362,32 @@ export const SPOTIFY_TOOLS = [
     },
   },
   {
+    name: 'get_lastfm_tags',
+    description: 'Fetch Last.fm crowd-sourced tags (genre, mood, style descriptors like "shoegaze", "dream-pop", "lo-fi") for a batch of artists and/or tracks. Use this to get detailed sonic/style metadata for tracks from playlists, search results, or any other source. Requires Last.fm API key to be configured.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        artists: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Artist names to fetch tags for (e.g. ["Radiohead", "Bjork"]).',
+        },
+        tracks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              track: { type: 'string', description: 'Track name.' },
+              artist: { type: 'string', description: 'Artist name.' },
+            },
+            required: ['track', 'artist'],
+          },
+          description: 'Tracks to fetch tags for (e.g. [{"track": "Karma Police", "artist": "Radiohead"}]).',
+        },
+      },
+    },
+  },
+  {
     name: 'get_queue',
     description: 'Get the current Spotify playback queue (upcoming tracks).',
     input_schema: { type: 'object', properties: {} },

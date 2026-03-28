@@ -11,27 +11,34 @@
 // buildMusicAgentSystemPrompt — combined system prompt for the single agentic call.
 // Today's date is injected so the LLM can resolve relative references.
 // ---------------------------------------------------------------------------
-export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence) {
+export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelligence, lastfmTags = []) {
   const today = new Date().toISOString().slice(0, 10);
   const lines = [];
 
   lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria.`);
   lines.push('');
   lines.push('Your job:');
-  lines.push('1. Understand the user\'s intent — including any time period they reference ("Sept 2024", "last summer", "when I was at uni")');
-  lines.push('2. If a time period is mentioned, call get_history_taste with the appropriate from/to dates to fetch what they were listening to then');
-  lines.push('3. Use your knowledge of the specific artists and tracks returned to translate their sound into a Lyria prompt');
+  lines.push('1. Understand the user\'s intent — a time period, a playlist, a mood, a specific artist/track vibe, or a general taste query');
+  lines.push('2. Gather the musical data you need using tools:');
+  lines.push('   - Time period → call get_history_taste with from/to dates');
+  lines.push('   - Playlist reference → call get_playlists to find it and its tracks, then call get_lastfm_tags with those tracks to get sonic metadata');
+  lines.push('   - General taste → call get_top_artists or get_top_tracks, then get_lastfm_tags for the results');
+  lines.push('   - No specific reference → use the baseline profile context below');
+  lines.push('3. Use the lastfmTags (per-artist, per-track, and aggregated) plus your music knowledge to translate the sound into a Lyria prompt');
   lines.push('4. Output the final Lyria prompt as a JSON object — nothing else');
   lines.push('');
   lines.push('## Tool rules');
-  lines.push('- Call get_history_taste ONCE with date params for period queries — it returns top artists, tracks, and behavioral signals for that period');
-  lines.push('- Do not call multiple tools for the same date range');
-  lines.push('- If no time period is mentioned, skip tool calls and use the profile context below');
+  lines.push('- You have access to all Spotify data tools: playlists, top artists/tracks, history, taste profile, search, and more');
+  lines.push('- Use get_lastfm_tags to fetch detailed genre/mood/style tags for specific artists or tracks — pass artists and/or tracks in a single call');
+  lines.push('- get_history_taste auto-enriches results with Last.fm tags; for playlists or search results, call get_lastfm_tags explicitly');
+  lines.push('- Keep tool calls efficient — fetch what you need, then produce the prompt');
   lines.push('');
   lines.push('## Lyria output rules');
   lines.push('- NEVER include artist names, band names, song titles, or album names — copyright filter will block generation');
   lines.push('- Use your knowledge of those specific tracks/artists to infer accurate BPM, key, instruments, and production style');
   lines.push('- Use generic instrument descriptions (e.g. "synth arpeggios", "fingerpicked acoustic guitar", "808 sub bass")');
+  lines.push('- If lastfmTags are present (in the profile below or in tool responses), use them as your PRIMARY source of sonic/style info — they describe subgenres, moods, and production styles more precisely than generic genre labels (e.g. "shoegaze", "dream-pop", "lo-fi", "atmospheric", "melancholic")');
+  lines.push('- Per-artist lastfmTags tell you each artist\'s specific sound; the aggregated lastfmTags show the overall vibe — use both to pick instruments, production style, and mood');
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
@@ -39,7 +46,7 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
   lines.push('');
 
   // Inject overall taste profile as baseline context
-  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData);
+  const ctx = buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags);
   if (Object.keys(ctx).length) {
     lines.push('## Overall taste profile (baseline — use when no period is specified)');
     lines.push(JSON.stringify(ctx, null, 2));
@@ -48,7 +55,7 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
   return lines.join('\n');
 }
 
-function buildBaselineContext(intelligence, historyMetrics, spotifyData) {
+function buildBaselineContext(intelligence, historyMetrics, spotifyData, lastfmTags = []) {
   const ctx = {};
 
   if (intelligence?.topArtistsAllTime?.length) {
@@ -62,6 +69,10 @@ function buildBaselineContext(intelligence, historyMetrics, spotifyData) {
     }
   }
   if (genres.size) ctx.spotifyGenres = [...genres].slice(0, 20);
+
+  if (lastfmTags?.length) {
+    ctx.lastfmTags = lastfmTags.map((t) => t.name);
+  }
 
   if (intelligence?.personalityTags?.length) ctx.personalityTags = intelligence.personalityTags;
   if (intelligence?.tempoPreference) ctx.tempoPreference = intelligence.tempoPreference;
@@ -99,7 +110,7 @@ export function assembleLyriaPrompt(fields) {
 // buildFallbackLyriaPrompt — used when no LLM is configured.
 // Derives a profile from Spotify genre tags and behavioral signals.
 // ---------------------------------------------------------------------------
-export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyData, intelligence, moodHint }) {
+export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyData, intelligence, moodHint, lastfmTags = [] }) {
   const PROFILES = {
     pop:        { bpm: 118, key: 'G major', genre: 'pop',        instruments: 'clean electric guitar, layered synth pads, crisp snare, punchy bass', production: 'modern pop production, wide stereo image' },
     'indie pop':{ bpm: 108, key: 'D minor', genre: 'indie',      instruments: 'jangly guitar, piano, brushed drums, warm bass',                       production: 'bedroom-pop texture, reverb-drenched guitar' },
@@ -112,7 +123,7 @@ export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyD
   };
 
   const RULES = [
-    { keys: ['hip hop', 'rap', 'trap', 'drill'],       k: 'hip-hop'    },
+    { keys: ['hip-hop', 'rap', 'trap', 'drill'],       k: 'hip-hop'    },
     { keys: ['r&b', 'soul', 'funk', 'neo soul'],       k: 'rb'         },
     { keys: ['country', 'bluegrass', 'americana'],     k: 'country'    },
     { keys: ['folk', 'singer-songwriter'],             k: 'folk'       },
@@ -131,6 +142,15 @@ export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyD
   const artists = periodStats?.topArtists || intelligence?.topArtistsAllTime?.slice(0, 12) || [];
   for (const a of artists) {
     for (const g of agm[a.name] || []) weights[g] = (weights[g] || 0) + (a.plays || 1);
+  }
+
+  // Boost scores with Last.fm tags — these are often more descriptive than Spotify genres
+  const tagNames = lastfmTags.map((t) => typeof t === 'string' ? t : t.name);
+  for (const tag of tagNames) {
+    const tl = tag.toLowerCase();
+    for (const rule of RULES) {
+      if (rule.keys.some((k) => tl.includes(k))) { weights[tag] = (weights[tag] || 0) + 50; break; }
+    }
   }
 
   const scores = {};
@@ -157,5 +177,23 @@ export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyD
   else if (/chill|calm|relax/.test(hint)) { bpm = Math.round(bpm * 0.9); intensity -= 2; }
   intensity = Math.max(1, Math.min(10, intensity));
 
-  return assembleLyriaPrompt({ bpm, key, genre: p.genre, instruments: p.instruments, production: p.production, mood: 'emotive', intensity });
+  // Extract mood and production descriptors from Last.fm tags
+  const MOOD_TAGS = ['melancholic', 'melancholy', 'sad', 'happy', 'euphoric', 'dark', 'dreamy',
+    'ethereal', 'aggressive', 'angry', 'chill', 'uplifting', 'nostalgic', 'romantic',
+    'energetic', 'mellow', 'haunting', 'upbeat', 'somber', 'intense', 'peaceful', 'bittersweet'];
+  const PRODUCTION_TAGS = ['shoegaze', 'lo-fi', 'ambient', 'psychedelic', 'experimental',
+    'minimalist', 'atmospheric', 'noise', 'glitch', 'chillwave', 'synthwave', 'vaporwave',
+    'acoustic', 'orchestral', 'chamber', 'industrial', 'post-rock', 'post-punk', 'new-wave',
+    'dream-pop', 'noise-pop', 'art-rock', 'art-pop', 'neo-psychedelia'];
+
+  const moodFromTags = tagNames.filter((t) => MOOD_TAGS.includes(t.toLowerCase()));
+  const productionFromTags = tagNames.filter((t) => PRODUCTION_TAGS.includes(t.toLowerCase()));
+
+  const mood = moodFromTags.length >= 2 ? moodFromTags.slice(0, 4).join(', ') : 'emotive';
+  let production = p.production;
+  if (productionFromTags.length) {
+    production += ', ' + productionFromTags.slice(0, 3).join(', ') + ' influences';
+  }
+
+  return assembleLyriaPrompt({ bpm, key, genre: p.genre, instruments: p.instruments, production, mood, intensity });
 }

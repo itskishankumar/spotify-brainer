@@ -12,12 +12,13 @@ A Chrome extension that adds an intelligent AI sidebar to Spotify's web player. 
 - **Playback control via LLM** — the AI can play/pause, skip, search, queue songs, create playlists, save tracks, and more using tool use
 - **Track credits lookup** — scrapes Spotify's credits dialog for any track (writers, producers, performers, engineers, label) via SPA navigation — no API needed
 - **Clickable song links** — every song the LLM mentions is a playable link
+- **Last.fm tag enrichment** — fetches crowd-sourced genre/mood/style tags (e.g. "shoegaze", "dream-pop", "lo-fi", "melancholic") from Last.fm for artists and tracks, dramatically improving music generation prompts; two-tier cache (in-memory + persistent) with 7-day TTL
 - **Taste intelligence layer** — decade split, discovery score, personality tags, playlist profiles
 - **Streaming history import** — import your Spotify listening history (both basic Account Data and Extended GDPR formats) with clear/re-import support
 - **Rich history metrics** — lifetime stats, listening engagement, artist relationships, temporal heatmap, replay obsession, taste evolution, and more computed from your GDPR export
 - **God Mode tab** — raw data viewer showing every data source in the app with source badges (API / computed)
 - **Dynamic LLM data fetching** — the AI fetches your data on demand via tools rather than loading everything into context upfront; only the currently playing track is always available
-- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe or reference a time period ("something like I listened to in summer 2023") and the LLM translates your actual listening history into a Lyria prompt using its built-in knowledge of what those specific tracks sound like; save and replay clips with a built-in audio player
+- **AI music generation** — generates original 30-second clips tailored to your taste using Lyria (Google AI); describe a vibe, reference a time period ("something like I listened to in summer 2023"), or reference a playlist ("generate something like my G playlist") and the LLM gathers your data, fetches Last.fm tags for the relevant tracks, and produces a detailed Lyria prompt; save and replay clips with a built-in audio player
 - **Streaming responses** with markdown rendering
 - **Conversation history** — multiple chats, persistent across sessions, exportable as markdown
 - **Data caching** — persists across browser restarts via chrome.storage.local
@@ -68,13 +69,26 @@ For history analysis, import your streaming history JSON files from your Spotify
 
 Re-importing clears previous history. Use the **Clear History** button to wipe data manually.
 
-### 5. Generate music (optional)
+### 5. Configure Last.fm (optional, improves music generation)
+
+1. Go to [last.fm/api/account/create](https://www.last.fm/api/account/create) and create a free API key (callback URL doesn't matter — use anything)
+2. In Settings → Music Enrichment (Last.fm), paste your API key
+3. Click **Test Connection** to verify
+
+When configured, the music generation pipeline fetches crowd-sourced tags from Last.fm for artists and tracks, giving the LLM detailed sonic metadata (subgenres, moods, production styles) instead of relying solely on artist/track names.
+
+### 6. Generate music (optional)
 
 1. In Settings → Music Generation, select a provider and model
 2. Enter your API key (for Lyria, get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
 3. Click the sparkle icon (✦) in the header to open the Generate tab
-4. Optionally describe what you're in the mood for — you can be vague ("something chill") or reference a time period ("a song I would've liked in Sept 2024"); leave blank to use your overall profile
-5. Save clips you like — they're stored locally and accessible from the library
+4. Describe what you're in the mood for:
+   - Vague mood: "something chill", "upbeat and energetic"
+   - Time period: "a song I would've liked in Sept 2024"
+   - Playlist-based: "generate something like my G playlist"
+   - Or leave blank to use your overall taste profile
+5. The LLM gathers the relevant data (playlists, history, top tracks), fetches Last.fm tags for sonic context, and produces a detailed Lyria prompt
+6. Save clips you like — they're stored locally and accessible from the library
 
 ## Architecture
 
@@ -107,6 +121,7 @@ spotify-brainer/
 │   ├── spotify-controls.js    # Playback, search, playlist, library controls
 │   ├── spotify-intelligence.js # ETL: raw data → taste profile + metrics
 │   ├── spotify-history.js     # Historical data + trend computation
+│   ├── lastfm.js              # Last.fm API client — tag fetching, batch enrichment, two-tier cache
 │   └── marked.min.js          # Markdown rendering (vendored)
 ├── popup/                     # Extension popup
 └── icons/                     # Extension icons
@@ -139,19 +154,23 @@ GDPR Import  ──→  IndexedDB ──┤
            (play, search, etc.)  (profile, history,
                                   top tracks, etc.)
 
-buildMusicAgentSystemPrompt()  ──→  LLM agentic loop (max 3 rounds)
+buildMusicAgentSystemPrompt()  ──→  LLM agentic loop (max 5 rounds)
   (taste profile as baseline)        Claude / OpenAI / Gemini
                                               │
-                                       tool_use? (optional)
-                                              │
-                                    get_history_taste(from, to)  ──→  IndexedDB
-                                      (if time period mentioned)       period artists,
-                                              │                        tracks, signals
-                                              │ ◄─────────────────────────────┘
-                                              ▼
-                                    LLM uses music knowledge of
-                                    specific artists/tracks to
-                                    output Lyria JSON prompt
+                                       tool_use calls
+                                    ┌─────────┼─────────┐
+                                    ▼         ▼         ▼
+                          get_history_taste  get_playlists  get_lastfm_tags
+                          get_top_artists   search         (batch artist +
+                          get_top_tracks    get_taste_     track tag fetch)
+                          (auto-enriched    profile             │
+                           with Last.fm)         │              │
+                                    │            │              ▼
+                                    │            │        Last.fm API
+                                    │            │     artist.getTopTags
+                                    ▼            ▼     track.getTopTags
+                                    LLM uses lastfmTags + music knowledge
+                                    to output detailed Lyria JSON prompt
                                               │
                                               ▼
                                     assembleLyriaPrompt()  ──→  MusicGenAdapter  ──→  Generated audio
@@ -174,7 +193,7 @@ Apps created after November 2024 have restricted API access:
 - Artist `genres` field — returns empty arrays
 - Search `limit` max reduced from 50 to 10
 
-The extension works around these by skipping unavailable endpoints and using the newer API variants.
+The extension works around these by skipping unavailable endpoints, using the newer API variants, and supplementing missing genre/audio data with Last.fm crowd-sourced tags.
 
 ## License
 
