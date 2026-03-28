@@ -7,6 +7,8 @@
 // Anti-taste & future-taste modes use deterministic data fetching (no intent classification).
 // buildFallbackLyriaPrompt() is used when no LLM is configured.
 
+import { findSonicOpposites, scoreAllGenres } from './realtime-anchors.js';
+
 // ---------------------------------------------------------------------------
 // buildMusicAgentSystemPrompt — combined system prompt for the single agentic call.
 // Today's date is injected so the LLM can resolve relative references.
@@ -232,99 +234,40 @@ function pickFutureAngle(intelligence) {
 }
 
 // ---------------------------------------------------------------------------
-// Anti-taste genre pool — grouped by sonic distance category.
-// Each run, the code randomly selects one genre the user doesn't listen to.
-const ANTI_TASTE_POOL = {
-  'Global & Regional': [
-    'Afrobeats', 'amapiano', 'highlife', 'afro-jazz', 'ethio-jazz', 'desert blues',
-    'gnawa', 'raï', 'cumbia', 'reggaeton', 'dembow', 'bossa nova', 'MPB', 'sertanejo',
-    'tropicália', 'Bollywood filmi', 'qawwali', 'Carnatic fusion', 'city pop', 'enka',
-    'Cantopop', 'gamelan-influenced', 'fado', 'flamenco nuevo', 'Celtic', 'Balkan brass',
-    'turbo-folk', 'Nordic folk', 'Tuvan throat singing', 'zouk', 'kompa', 'soukous',
-    'chicha', 'dangdut', 'taarab', 'mbalax', 'jùjú', 'fuji music', 'klezmer',
-  ],
-  'Electronic & Dance': [
-    'deep house', 'tech house', 'acid house', 'UK garage', 'breakbeat', 'jungle',
-    'liquid DnB', 'dubstep', 'riddim', 'future bass', 'hyperpop', 'PC music',
-    'vaporwave', 'synthwave', 'dark synth', 'IDM', 'glitch', 'ambient techno',
-    'minimal techno', 'hard techno', 'gabber', 'hardstyle', 'psytrance', 'Goa trance',
-    'progressive trance', 'downtempo', 'trip-hop', 'chillwave', 'lo-fi house',
-    'Italo disco', 'EBM', 'industrial dance', 'footwork', 'Jersey club',
-    'Baltimore club', 'baile funk', 'electro swing', 'witch house', 'deconstructed club',
-  ],
-  'Heavy & Extreme': [
-    'stoner doom', 'sludge metal', 'black metal', 'death metal', 'thrash metal',
-    'grindcore', 'mathcore', 'post-metal', 'drone metal', 'noise rock',
-    'power violence', 'crust punk', 'D-beat', 'blackgaze', 'funeral doom',
-    'technical death metal', 'symphonic black metal', 'industrial metal',
-  ],
-  'Art & Experimental': [
-    'free jazz', 'spiritual jazz', 'spectral music', 'musique concrète',
-    'electroacoustic', 'harsh noise', 'drone', 'dark ambient', 'prepared piano',
-    'microtonal', 'avant-garde', 'free improvisation', 'Krautrock', 'space rock',
-    'Canterbury scene', 'zeuhl', 'art rock', 'progressive rock', 'math rock',
-    'post-rock', 'chamber pop', 'modern classical minimalism', 'tape music',
-    'sound collage', 'noise pop', 'no wave',
-  ],
-  'Jazz & Swing': [
-    'bebop', 'hard bop', 'modal jazz', 'acid jazz', 'nu-jazz', 'jazz fusion',
-    'big band swing', '1930s hot jazz', 'cool jazz', 'Latin jazz',
-    'Afro-Cuban jazz', 'gypsy jazz',
-  ],
-  'Classical & Orchestral': [
-    'Baroque', 'Romantic era orchestral', 'Impressionist', 'late Romantic',
-    'chamber music', 'string quartet', 'solo piano Romantic', 'opera aria',
-    'choral polyphony', 'Renaissance lute music', 'Gregorian chant',
-  ],
-  'Retro & Vintage': [
-    '1950s doo-wop', 'rockabilly', '1960s psychedelia', 'Motown soul',
-    '1970s disco', 'P-funk', 'go-go', 'boogie', 'new jack swing',
-    'Italo disco', '1980s synth-pop', 'new wave', 'coldwave', 'darkwave',
-    'gothic rock', 'post-punk', 'surf rock', 'exotica', 'space age pop',
-    'easy listening', 'lounge', 'boogaloo', 'Northern soul',
-  ],
-  'Urban & Street': [
-    'boom bap', 'chopped & screwed', 'phonk', 'Memphis rap', 'hyphy', 'crunk',
-    'grime', 'UK drill', 'Chicago drill', 'cloud rap', 'abstract hip-hop',
-    'jazz rap', 'neo-soul', 'quiet storm', 'dancehall', 'bashment', 'soca',
-    'bounce', 'Miami bass', 'snap music', 'afroswing',
-  ],
-  'Folk & Acoustic': [
-    'bluegrass', 'old-time Appalachian', 'delta blues', 'Piedmont blues',
-    'fingerstyle acoustic', 'singer-songwriter folk', 'anti-folk', 'freak folk',
-    'neofolk', 'medieval folk', 'chanson française', 'ranchera', 'corrido',
-    'tango', 'rebetiko', 'Hindustani classical', 'West African griot',
-  ],
-};
+// Sonic-opposite-based anti-taste genre selection.
+// Instead of randomly picking from a pool, we compute the user's sonic centroid
+// across 5 axes (bpm, density, brightness, energy, organic) and pick genres
+// that are maximally distant — so a metal fan gets lo-fi, not random fado.
+// ---------------------------------------------------------------------------
 
-function pickAntiTasteCandidates(userGenres) {
-  const userSet = new Set((userGenres || []).map((g) => g.toLowerCase()));
-  const categories = Object.keys(ANTI_TASTE_POOL);
-
-  // Collect ALL eligible genres across all categories
-  const allEligible = [];
-  for (const cat of categories) {
-    for (const genre of ANTI_TASTE_POOL[cat]) {
-      if (!userSet.has(genre.toLowerCase())) {
-        allEligible.push({ genre, category: cat });
-      }
+function pickAntiTasteCandidates(spotifyData, intelligence, historyMetrics, lastfmTags) {
+  // Compute genre scores using the same scoring as realtime anchors
+  const cachedArtistTags = {};
+  if (lastfmTags && Array.isArray(lastfmTags)) {
+    for (const entry of lastfmTags) {
+      if (entry.artist && entry.tags) cachedArtistTags[entry.artist.toLowerCase()] = entry.tags;
     }
+  } else if (lastfmTags && typeof lastfmTags === 'object') {
+    Object.assign(cachedArtistTags, lastfmTags);
   }
 
-  // Shuffle and pick ONE definitive genre
-  for (let i = allEligible.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [allEligible[i], allEligible[j]] = [allEligible[j], allEligible[i]];
+  const scores = scoreAllGenres(spotifyData, historyMetrics, intelligence, cachedArtistTags);
+  const opposites = findSonicOpposites(scores, 8);
+
+  if (!opposites.length) {
+    return { genre: 'ambient', distance: 1 };
   }
 
-  const pick = allEligible[0] || { genre: 'Tuvan throat singing', category: 'Global & Regional' };
+  // Pick one random genre from the top sonic opposites (keeps variety across runs)
+  const pick = opposites[Math.floor(Math.random() * Math.min(opposites.length, 5))];
   return pick;
 }
 
 // ---------------------------------------------------------------------------
-// buildAntiTasteSystemPrompt — instructs the LLM to find the user's blind spots
-// and generate something from genres/styles/decades they never listen to,
-// while keeping just enough familiar elements to make it palatable.
+// buildAntiTasteSystemPrompt — instructs the LLM to generate a track that is
+// the sonic opposite of the user's taste (maximally distant across energy,
+// tempo, density, brightness, and organic/synthetic axes), while keeping
+// just enough familiar elements to make it palatable.
 // ---------------------------------------------------------------------------
 /**
  * Returns { prompt: string, genre: string, category: string }
@@ -334,23 +277,16 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
   const today = new Date().toISOString().slice(0, 10);
   const lines = [];
 
-  // Extract user's known genres for filtering
-  const userGenres = [];
-  for (const range of ['long', 'medium', 'short']) {
-    for (const artist of spotifyData?.topArtists?.[range] || []) {
-      for (const g of artist.genres || []) userGenres.push(g);
-    }
-  }
-
-  // Code-side randomness: pick ONE genre BEFORE the LLM sees the prompt — no LLM choice involved
-  const pick = pickAntiTasteCandidates(userGenres);
+  // Code-side sonic opposite: pick ONE genre that is maximally distant from the user's
+  // taste centroid across 5 axes (bpm, density, brightness, energy, organic)
+  const pick = pickAntiTasteCandidates(spotifyData, intelligence, historyMetrics, lastfmTags);
 
   lines.push(`Today is ${today}. You are a music prompt engineer for Google Lyria, running in ANTI-TASTE mode.`);
   lines.push('');
-  lines.push('Your job: Generate a track from the user\'s BLIND SPOTS — genres they almost never listen to. This is a musical dare — surprise them with something they\'d never pick themselves.');
+  lines.push('Your job: Generate a track that is the SONIC OPPOSITE of the user\'s taste — maximally distant across energy, tempo, density, brightness, and acoustic/electronic axes. This is a musical dare — surprise them with something that sounds nothing like their usual listening.');
   lines.push('');
   lines.push('## MANDATORY: Your genre assignment for this run');
-  lines.push(`The system has randomly selected **${pick.genre}** (from the ${pick.category} family) for this run.`);
+  lines.push(`The system has computed that **${pick.genre}** is a sonic opposite of the user's taste for this run.`);
   lines.push(`You MUST use this exact genre — do NOT substitute your own choice or pick a different genre.`);
   lines.push(`Build the entire track around authentic ${pick.genre} characteristics.`);
   lines.push('');
@@ -370,7 +306,7 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
-  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"the specific genre you picked from the candidates","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"antiTasteReason":"1-2 sentences: what blind spot this targets, why it\'s distant from their taste, and what familiar anchor was kept"}');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"the specific genre you picked from the candidates","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"antiTasteReason":"1-2 sentences: what sonic dimensions this inverts (e.g. high-energy → calm, synthetic → organic), why it\'s the opposite of their taste, and what familiar anchor was kept"}');
   lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["afrobeats","groovy","percussive"]). These are displayed to the user as labels.');
   lines.push('');
 
@@ -380,7 +316,7 @@ export function buildAntiTasteSystemPrompt(historyMetrics, spotifyData, intellig
     lines.push(JSON.stringify(ctx, null, 2));
   }
 
-  return { prompt: lines.join('\n'), genre: pick.genre, category: pick.category };
+  return { prompt: lines.join('\n'), genre: pick.genre, distance: pick.distance };
 }
 
 // ---------------------------------------------------------------------------

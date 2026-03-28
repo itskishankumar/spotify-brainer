@@ -16,219 +16,219 @@
 // Genre → typical BPM / density / brightness
 // ---------------------------------------------------------------------------
 const GENRE_PARAMS = {
-  // Electronic
-  'ambient': { bpm: 80, density: 0.15, brightness: 0.4 },
-  'downtempo': { bpm: 90, density: 0.35, brightness: 0.45 },
-  'trip hop': { bpm: 85, density: 0.4, brightness: 0.35 },
-  'chillwave': { bpm: 95, density: 0.35, brightness: 0.55 },
-  'lo-fi': { bpm: 80, density: 0.3, brightness: 0.4 },
-  'house': { bpm: 124, density: 0.65, brightness: 0.6 },
-  'deep house': { bpm: 122, density: 0.55, brightness: 0.5 },
-  'tech house': { bpm: 126, density: 0.7, brightness: 0.5 },
-  'progressive house': { bpm: 128, density: 0.6, brightness: 0.6 },
-  'acid house': { bpm: 128, density: 0.7, brightness: 0.6 },
-  'electro house': { bpm: 128, density: 0.75, brightness: 0.65 },
-  'techno': { bpm: 130, density: 0.75, brightness: 0.4 },
-  'minimal techno': { bpm: 128, density: 0.5, brightness: 0.35 },
-  'detroit techno': { bpm: 130, density: 0.7, brightness: 0.45 },
-  'trance': { bpm: 138, density: 0.7, brightness: 0.7 },
-  'psytrance': { bpm: 145, density: 0.8, brightness: 0.6 },
-  'drum and bass': { bpm: 174, density: 0.8, brightness: 0.5 },
-  'jungle': { bpm: 165, density: 0.8, brightness: 0.5 },
-  'dubstep': { bpm: 140, density: 0.8, brightness: 0.35 },
-  'edm': { bpm: 128, density: 0.8, brightness: 0.7 },
-  'idm': { bpm: 135, density: 0.7, brightness: 0.5 },
-  'glitch': { bpm: 130, density: 0.8, brightness: 0.5 },
-  'gabber': { bpm: 180, density: 0.9, brightness: 0.4 },
-  'footwork': { bpm: 160, density: 0.8, brightness: 0.5 },
-  'deconstructed club': { bpm: 140, density: 0.7, brightness: 0.4 },
-  'electronica': { bpm: 120, density: 0.6, brightness: 0.55 },
-  'synthwave': { bpm: 118, density: 0.6, brightness: 0.6 },
-  'darkwave': { bpm: 120, density: 0.5, brightness: 0.3 },
-  'coldwave': { bpm: 120, density: 0.4, brightness: 0.3 },
-  'vaporwave': { bpm: 90, density: 0.35, brightness: 0.5 },
-  'future bass': { bpm: 150, density: 0.7, brightness: 0.7 },
-  'future garage': { bpm: 130, density: 0.5, brightness: 0.45 },
-  'uk garage': { bpm: 130, density: 0.65, brightness: 0.6 },
-  'breakbeat': { bpm: 135, density: 0.7, brightness: 0.55 },
-  'industrial': { bpm: 125, density: 0.8, brightness: 0.25 },
-  'ebm': { bpm: 120, density: 0.7, brightness: 0.3 },
-  'witch house': { bpm: 110, density: 0.5, brightness: 0.2 },
-  'electronic': { bpm: 125, density: 0.6, brightness: 0.55 },
-  'dance': { bpm: 125, density: 0.7, brightness: 0.65 },
+  // Electronic                                                    energy  organic
+  'ambient':            { bpm: 80,  density: 0.15, brightness: 0.4,  energy: 0.1,  organic: 0.15 },
+  'downtempo':          { bpm: 90,  density: 0.35, brightness: 0.45, energy: 0.25, organic: 0.2  },
+  'trip hop':           { bpm: 85,  density: 0.4,  brightness: 0.35, energy: 0.3,  organic: 0.3  },
+  'chillwave':          { bpm: 95,  density: 0.35, brightness: 0.55, energy: 0.2,  organic: 0.2  },
+  'lo-fi':              { bpm: 80,  density: 0.3,  brightness: 0.4,  energy: 0.15, organic: 0.3  },
+  'house':              { bpm: 124, density: 0.65, brightness: 0.6,  energy: 0.6,  organic: 0.1  },
+  'deep house':         { bpm: 122, density: 0.55, brightness: 0.5,  energy: 0.5,  organic: 0.1  },
+  'tech house':         { bpm: 126, density: 0.7,  brightness: 0.5,  energy: 0.6,  organic: 0.1  },
+  'progressive house':  { bpm: 128, density: 0.6,  brightness: 0.6,  energy: 0.55, organic: 0.1  },
+  'acid house':         { bpm: 128, density: 0.7,  brightness: 0.6,  energy: 0.65, organic: 0.05 },
+  'electro house':      { bpm: 128, density: 0.75, brightness: 0.65, energy: 0.7,  organic: 0.05 },
+  'techno':             { bpm: 130, density: 0.75, brightness: 0.4,  energy: 0.7,  organic: 0.05 },
+  'minimal techno':     { bpm: 128, density: 0.5,  brightness: 0.35, energy: 0.5,  organic: 0.05 },
+  'detroit techno':     { bpm: 130, density: 0.7,  brightness: 0.45, energy: 0.65, organic: 0.05 },
+  'trance':             { bpm: 138, density: 0.7,  brightness: 0.7,  energy: 0.7,  organic: 0.05 },
+  'psytrance':          { bpm: 145, density: 0.8,  brightness: 0.6,  energy: 0.8,  organic: 0.05 },
+  'drum and bass':      { bpm: 174, density: 0.8,  brightness: 0.5,  energy: 0.8,  organic: 0.1  },
+  'jungle':             { bpm: 165, density: 0.8,  brightness: 0.5,  energy: 0.8,  organic: 0.1  },
+  'dubstep':            { bpm: 140, density: 0.8,  brightness: 0.35, energy: 0.75, organic: 0.05 },
+  'edm':                { bpm: 128, density: 0.8,  brightness: 0.7,  energy: 0.8,  organic: 0.05 },
+  'idm':                { bpm: 135, density: 0.7,  brightness: 0.5,  energy: 0.5,  organic: 0.1  },
+  'glitch':             { bpm: 130, density: 0.8,  brightness: 0.5,  energy: 0.6,  organic: 0.05 },
+  'gabber':             { bpm: 180, density: 0.9,  brightness: 0.4,  energy: 0.95, organic: 0.05 },
+  'footwork':           { bpm: 160, density: 0.8,  brightness: 0.5,  energy: 0.75, organic: 0.1  },
+  'deconstructed club': { bpm: 140, density: 0.7,  brightness: 0.4,  energy: 0.6,  organic: 0.1  },
+  'electronica':        { bpm: 120, density: 0.6,  brightness: 0.55, energy: 0.45, organic: 0.15 },
+  'synthwave':          { bpm: 118, density: 0.6,  brightness: 0.6,  energy: 0.5,  organic: 0.1  },
+  'darkwave':           { bpm: 120, density: 0.5,  brightness: 0.3,  energy: 0.45, organic: 0.15 },
+  'coldwave':           { bpm: 120, density: 0.4,  brightness: 0.3,  energy: 0.4,  organic: 0.15 },
+  'vaporwave':          { bpm: 90,  density: 0.35, brightness: 0.5,  energy: 0.15, organic: 0.1  },
+  'future bass':        { bpm: 150, density: 0.7,  brightness: 0.7,  energy: 0.7,  organic: 0.05 },
+  'future garage':      { bpm: 130, density: 0.5,  brightness: 0.45, energy: 0.4,  organic: 0.1  },
+  'uk garage':          { bpm: 130, density: 0.65, brightness: 0.6,  energy: 0.6,  organic: 0.1  },
+  'breakbeat':          { bpm: 135, density: 0.7,  brightness: 0.55, energy: 0.65, organic: 0.1  },
+  'industrial':         { bpm: 125, density: 0.8,  brightness: 0.25, energy: 0.85, organic: 0.1  },
+  'ebm':                { bpm: 120, density: 0.7,  brightness: 0.3,  energy: 0.7,  organic: 0.1  },
+  'witch house':        { bpm: 110, density: 0.5,  brightness: 0.2,  energy: 0.35, organic: 0.1  },
+  'electronic':         { bpm: 125, density: 0.6,  brightness: 0.55, energy: 0.5,  organic: 0.1  },
+  'dance':              { bpm: 125, density: 0.7,  brightness: 0.65, energy: 0.65, organic: 0.1  },
 
   // Rock & adjacent
-  'rock': { bpm: 120, density: 0.65, brightness: 0.55 },
-  'indie rock': { bpm: 120, density: 0.55, brightness: 0.55 },
-  'indie': { bpm: 115, density: 0.5, brightness: 0.55 },
-  'alternative rock': { bpm: 120, density: 0.6, brightness: 0.5 },
-  'alternative': { bpm: 115, density: 0.55, brightness: 0.5 },
-  'art rock': { bpm: 110, density: 0.55, brightness: 0.5 },
-  'prog rock': { bpm: 110, density: 0.65, brightness: 0.55 },
-  'progressive rock': { bpm: 110, density: 0.65, brightness: 0.55 },
-  'psychedelic rock': { bpm: 115, density: 0.6, brightness: 0.6 },
-  'garage rock': { bpm: 130, density: 0.7, brightness: 0.55 },
-  'punk': { bpm: 160, density: 0.8, brightness: 0.5 },
-  'punk rock': { bpm: 160, density: 0.8, brightness: 0.5 },
-  'post-punk': { bpm: 130, density: 0.55, brightness: 0.35 },
-  'new wave': { bpm: 125, density: 0.55, brightness: 0.6 },
-  'shoegaze': { bpm: 100, density: 0.7, brightness: 0.45 },
-  'dream pop': { bpm: 95, density: 0.5, brightness: 0.55 },
-  'noise pop': { bpm: 115, density: 0.7, brightness: 0.45 },
-  'noise rock': { bpm: 140, density: 0.8, brightness: 0.3 },
-  'math rock': { bpm: 140, density: 0.7, brightness: 0.55 },
-  'post-rock': { bpm: 100, density: 0.5, brightness: 0.45 },
-  'emo': { bpm: 130, density: 0.65, brightness: 0.5 },
-  'screamo': { bpm: 160, density: 0.85, brightness: 0.35 },
-  'hardcore': { bpm: 160, density: 0.85, brightness: 0.35 },
-  'grunge': { bpm: 115, density: 0.7, brightness: 0.35 },
-  'stoner rock': { bpm: 100, density: 0.7, brightness: 0.4 },
-  'surf rock': { bpm: 140, density: 0.55, brightness: 0.7 },
-  'britpop': { bpm: 120, density: 0.6, brightness: 0.6 },
-  'power pop': { bpm: 130, density: 0.6, brightness: 0.7 },
-  'pop punk': { bpm: 155, density: 0.7, brightness: 0.65 },
-  'ska': { bpm: 150, density: 0.65, brightness: 0.7 },
-  'rockabilly': { bpm: 170, density: 0.6, brightness: 0.7 },
+  'rock':               { bpm: 120, density: 0.65, brightness: 0.55, energy: 0.65, organic: 0.7  },
+  'indie rock':         { bpm: 120, density: 0.55, brightness: 0.55, energy: 0.55, organic: 0.7  },
+  'indie':              { bpm: 115, density: 0.5,  brightness: 0.55, energy: 0.45, organic: 0.65 },
+  'alternative rock':   { bpm: 120, density: 0.6,  brightness: 0.5,  energy: 0.6,  organic: 0.65 },
+  'alternative':        { bpm: 115, density: 0.55, brightness: 0.5,  energy: 0.5,  organic: 0.6  },
+  'art rock':           { bpm: 110, density: 0.55, brightness: 0.5,  energy: 0.45, organic: 0.6  },
+  'prog rock':          { bpm: 110, density: 0.65, brightness: 0.55, energy: 0.55, organic: 0.6  },
+  'progressive rock':   { bpm: 110, density: 0.65, brightness: 0.55, energy: 0.55, organic: 0.6  },
+  'psychedelic rock':   { bpm: 115, density: 0.6,  brightness: 0.6,  energy: 0.5,  organic: 0.6  },
+  'garage rock':        { bpm: 130, density: 0.7,  brightness: 0.55, energy: 0.75, organic: 0.75 },
+  'punk':               { bpm: 160, density: 0.8,  brightness: 0.5,  energy: 0.9,  organic: 0.75 },
+  'punk rock':          { bpm: 160, density: 0.8,  brightness: 0.5,  energy: 0.9,  organic: 0.75 },
+  'post-punk':          { bpm: 130, density: 0.55, brightness: 0.35, energy: 0.55, organic: 0.55 },
+  'new wave':           { bpm: 125, density: 0.55, brightness: 0.6,  energy: 0.5,  organic: 0.4  },
+  'shoegaze':           { bpm: 100, density: 0.7,  brightness: 0.45, energy: 0.4,  organic: 0.55 },
+  'dream pop':          { bpm: 95,  density: 0.5,  brightness: 0.55, energy: 0.25, organic: 0.5  },
+  'noise pop':          { bpm: 115, density: 0.7,  brightness: 0.45, energy: 0.55, organic: 0.6  },
+  'noise rock':         { bpm: 140, density: 0.8,  brightness: 0.3,  energy: 0.85, organic: 0.7  },
+  'math rock':          { bpm: 140, density: 0.7,  brightness: 0.55, energy: 0.65, organic: 0.75 },
+  'post-rock':          { bpm: 100, density: 0.5,  brightness: 0.45, energy: 0.35, organic: 0.65 },
+  'emo':                { bpm: 130, density: 0.65, brightness: 0.5,  energy: 0.65, organic: 0.7  },
+  'screamo':            { bpm: 160, density: 0.85, brightness: 0.35, energy: 0.9,  organic: 0.7  },
+  'hardcore':           { bpm: 160, density: 0.85, brightness: 0.35, energy: 0.95, organic: 0.7  },
+  'grunge':             { bpm: 115, density: 0.7,  brightness: 0.35, energy: 0.7,  organic: 0.75 },
+  'stoner rock':        { bpm: 100, density: 0.7,  brightness: 0.4,  energy: 0.6,  organic: 0.7  },
+  'surf rock':          { bpm: 140, density: 0.55, brightness: 0.7,  energy: 0.6,  organic: 0.8  },
+  'britpop':            { bpm: 120, density: 0.6,  brightness: 0.6,  energy: 0.55, organic: 0.7  },
+  'power pop':          { bpm: 130, density: 0.6,  brightness: 0.7,  energy: 0.6,  organic: 0.7  },
+  'pop punk':           { bpm: 155, density: 0.7,  brightness: 0.65, energy: 0.8,  organic: 0.7  },
+  'ska':                { bpm: 150, density: 0.65, brightness: 0.7,  energy: 0.7,  organic: 0.75 },
+  'rockabilly':         { bpm: 170, density: 0.6,  brightness: 0.7,  energy: 0.7,  organic: 0.85 },
 
   // Metal
-  'metal': { bpm: 140, density: 0.85, brightness: 0.3 },
-  'heavy metal': { bpm: 135, density: 0.8, brightness: 0.35 },
-  'thrash metal': { bpm: 170, density: 0.9, brightness: 0.3 },
-  'death metal': { bpm: 170, density: 0.9, brightness: 0.2 },
-  'black metal': { bpm: 170, density: 0.9, brightness: 0.2 },
-  'doom metal': { bpm: 65, density: 0.6, brightness: 0.2 },
-  'sludge metal': { bpm: 80, density: 0.75, brightness: 0.25 },
-  'progressive metal': { bpm: 120, density: 0.8, brightness: 0.4 },
-  'power metal': { bpm: 150, density: 0.8, brightness: 0.55 },
-  'metalcore': { bpm: 140, density: 0.85, brightness: 0.35 },
-  'nu metal': { bpm: 115, density: 0.8, brightness: 0.4 },
+  'metal':              { bpm: 140, density: 0.85, brightness: 0.3,  energy: 0.9,  organic: 0.65 },
+  'heavy metal':        { bpm: 135, density: 0.8,  brightness: 0.35, energy: 0.85, organic: 0.7  },
+  'thrash metal':       { bpm: 170, density: 0.9,  brightness: 0.3,  energy: 0.95, organic: 0.7  },
+  'death metal':        { bpm: 170, density: 0.9,  brightness: 0.2,  energy: 0.95, organic: 0.65 },
+  'black metal':        { bpm: 170, density: 0.9,  brightness: 0.2,  energy: 0.95, organic: 0.6  },
+  'doom metal':         { bpm: 65,  density: 0.6,  brightness: 0.2,  energy: 0.7,  organic: 0.65 },
+  'sludge metal':       { bpm: 80,  density: 0.75, brightness: 0.25, energy: 0.8,  organic: 0.65 },
+  'progressive metal':  { bpm: 120, density: 0.8,  brightness: 0.4,  energy: 0.75, organic: 0.6  },
+  'power metal':        { bpm: 150, density: 0.8,  brightness: 0.55, energy: 0.85, organic: 0.65 },
+  'metalcore':          { bpm: 140, density: 0.85, brightness: 0.35, energy: 0.9,  organic: 0.6  },
+  'nu metal':           { bpm: 115, density: 0.8,  brightness: 0.4,  energy: 0.8,  organic: 0.5  },
 
   // Hip Hop & R&B
-  'hip hop': { bpm: 90, density: 0.65, brightness: 0.45 },
-  'rap': { bpm: 95, density: 0.7, brightness: 0.45 },
-  'trap': { bpm: 140, density: 0.7, brightness: 0.4 },
-  'drill': { bpm: 140, density: 0.7, brightness: 0.35 },
-  'boom bap': { bpm: 90, density: 0.6, brightness: 0.45 },
-  'abstract hip-hop': { bpm: 85, density: 0.5, brightness: 0.4 },
-  'phonk': { bpm: 130, density: 0.6, brightness: 0.3 },
-  'cloud rap': { bpm: 70, density: 0.4, brightness: 0.45 },
-  'r&b': { bpm: 85, density: 0.5, brightness: 0.55 },
-  'neo soul': { bpm: 85, density: 0.45, brightness: 0.55 },
-  'alternative r&b': { bpm: 90, density: 0.5, brightness: 0.5 },
+  'hip hop':            { bpm: 90,  density: 0.65, brightness: 0.45, energy: 0.55, organic: 0.25 },
+  'rap':                { bpm: 95,  density: 0.7,  brightness: 0.45, energy: 0.6,  organic: 0.2  },
+  'trap':               { bpm: 140, density: 0.7,  brightness: 0.4,  energy: 0.7,  organic: 0.1  },
+  'drill':              { bpm: 140, density: 0.7,  brightness: 0.35, energy: 0.7,  organic: 0.1  },
+  'boom bap':           { bpm: 90,  density: 0.6,  brightness: 0.45, energy: 0.5,  organic: 0.3  },
+  'abstract hip-hop':   { bpm: 85,  density: 0.5,  brightness: 0.4,  energy: 0.35, organic: 0.25 },
+  'phonk':              { bpm: 130, density: 0.6,  brightness: 0.3,  energy: 0.6,  organic: 0.15 },
+  'cloud rap':          { bpm: 70,  density: 0.4,  brightness: 0.45, energy: 0.25, organic: 0.15 },
+  'r&b':                { bpm: 85,  density: 0.5,  brightness: 0.55, energy: 0.35, organic: 0.4  },
+  'neo soul':           { bpm: 85,  density: 0.45, brightness: 0.55, energy: 0.3,  organic: 0.55 },
+  'alternative r&b':    { bpm: 90,  density: 0.5,  brightness: 0.5,  energy: 0.35, organic: 0.35 },
 
   // Pop
-  'pop': { bpm: 120, density: 0.6, brightness: 0.7 },
-  'synth pop': { bpm: 120, density: 0.6, brightness: 0.65 },
-  'electropop': { bpm: 125, density: 0.65, brightness: 0.7 },
-  'art pop': { bpm: 110, density: 0.55, brightness: 0.6 },
-  'chamber pop': { bpm: 100, density: 0.5, brightness: 0.6 },
-  'indie pop': { bpm: 115, density: 0.5, brightness: 0.6 },
-  'k-pop': { bpm: 125, density: 0.7, brightness: 0.75 },
-  'j-pop': { bpm: 125, density: 0.65, brightness: 0.7 },
+  'pop':                { bpm: 120, density: 0.6,  brightness: 0.7,  energy: 0.55, organic: 0.3  },
+  'synth pop':          { bpm: 120, density: 0.6,  brightness: 0.65, energy: 0.5,  organic: 0.15 },
+  'electropop':         { bpm: 125, density: 0.65, brightness: 0.7,  energy: 0.6,  organic: 0.1  },
+  'art pop':            { bpm: 110, density: 0.55, brightness: 0.6,  energy: 0.4,  organic: 0.35 },
+  'chamber pop':        { bpm: 100, density: 0.5,  brightness: 0.6,  energy: 0.3,  organic: 0.7  },
+  'indie pop':          { bpm: 115, density: 0.5,  brightness: 0.6,  energy: 0.4,  organic: 0.55 },
+  'k-pop':              { bpm: 125, density: 0.7,  brightness: 0.75, energy: 0.7,  organic: 0.2  },
+  'j-pop':              { bpm: 125, density: 0.65, brightness: 0.7,  energy: 0.6,  organic: 0.25 },
 
   // Jazz
-  'jazz': { bpm: 120, density: 0.55, brightness: 0.55 },
-  'bebop': { bpm: 160, density: 0.7, brightness: 0.6 },
-  'free jazz': { bpm: 140, density: 0.8, brightness: 0.5 },
-  'smooth jazz': { bpm: 95, density: 0.35, brightness: 0.6 },
-  'acid jazz': { bpm: 110, density: 0.55, brightness: 0.55 },
-  'nu jazz': { bpm: 110, density: 0.55, brightness: 0.55 },
-  'fusion': { bpm: 120, density: 0.7, brightness: 0.55 },
-  'gypsy jazz': { bpm: 140, density: 0.6, brightness: 0.7 },
+  'jazz':               { bpm: 120, density: 0.55, brightness: 0.55, energy: 0.4,  organic: 0.85 },
+  'bebop':              { bpm: 160, density: 0.7,  brightness: 0.6,  energy: 0.65, organic: 0.9  },
+  'free jazz':          { bpm: 140, density: 0.8,  brightness: 0.5,  energy: 0.7,  organic: 0.9  },
+  'smooth jazz':        { bpm: 95,  density: 0.35, brightness: 0.6,  energy: 0.2,  organic: 0.75 },
+  'acid jazz':          { bpm: 110, density: 0.55, brightness: 0.55, energy: 0.45, organic: 0.5  },
+  'nu jazz':            { bpm: 110, density: 0.55, brightness: 0.55, energy: 0.45, organic: 0.45 },
+  'fusion':             { bpm: 120, density: 0.7,  brightness: 0.55, energy: 0.6,  organic: 0.65 },
+  'gypsy jazz':         { bpm: 140, density: 0.6,  brightness: 0.7,  energy: 0.55, organic: 0.95 },
 
   // Folk & Country
-  'folk': { bpm: 100, density: 0.3, brightness: 0.5 },
-  'indie folk': { bpm: 105, density: 0.35, brightness: 0.5 },
-  'freak folk': { bpm: 90, density: 0.3, brightness: 0.5 },
-  'country': { bpm: 110, density: 0.45, brightness: 0.6 },
-  'americana': { bpm: 105, density: 0.4, brightness: 0.55 },
-  'bluegrass': { bpm: 130, density: 0.5, brightness: 0.6 },
+  'folk':               { bpm: 100, density: 0.3,  brightness: 0.5,  energy: 0.25, organic: 0.95 },
+  'indie folk':         { bpm: 105, density: 0.35, brightness: 0.5,  energy: 0.3,  organic: 0.9  },
+  'freak folk':         { bpm: 90,  density: 0.3,  brightness: 0.5,  energy: 0.25, organic: 0.9  },
+  'country':            { bpm: 110, density: 0.45, brightness: 0.6,  energy: 0.45, organic: 0.85 },
+  'americana':          { bpm: 105, density: 0.4,  brightness: 0.55, energy: 0.35, organic: 0.85 },
+  'bluegrass':          { bpm: 130, density: 0.5,  brightness: 0.6,  energy: 0.55, organic: 0.95 },
 
   // Classical & Orchestral
-  'classical': { bpm: 90, density: 0.45, brightness: 0.55 },
-  'contemporary classical': { bpm: 85, density: 0.4, brightness: 0.5 },
-  'minimalism': { bpm: 80, density: 0.2, brightness: 0.5 },
-  'neoclassical': { bpm: 85, density: 0.35, brightness: 0.5 },
-  'baroque': { bpm: 100, density: 0.5, brightness: 0.6 },
-  'orchestral': { bpm: 95, density: 0.55, brightness: 0.55 },
+  'classical':          { bpm: 90,  density: 0.45, brightness: 0.55, energy: 0.35, organic: 0.95 },
+  'contemporary classical': { bpm: 85, density: 0.4, brightness: 0.5, energy: 0.3, organic: 0.9 },
+  'minimalism':         { bpm: 80,  density: 0.2,  brightness: 0.5,  energy: 0.1,  organic: 0.8  },
+  'neoclassical':       { bpm: 85,  density: 0.35, brightness: 0.5,  energy: 0.25, organic: 0.85 },
+  'baroque':            { bpm: 100, density: 0.5,  brightness: 0.6,  energy: 0.4,  organic: 0.95 },
+  'orchestral':         { bpm: 95,  density: 0.55, brightness: 0.55, energy: 0.45, organic: 0.95 },
 
   // Soul & Funk
-  'soul': { bpm: 100, density: 0.55, brightness: 0.6 },
-  'funk': { bpm: 110, density: 0.7, brightness: 0.65 },
-  'disco': { bpm: 120, density: 0.7, brightness: 0.75 },
-  'motown': { bpm: 110, density: 0.6, brightness: 0.65 },
+  'soul':               { bpm: 100, density: 0.55, brightness: 0.6,  energy: 0.45, organic: 0.8  },
+  'funk':               { bpm: 110, density: 0.7,  brightness: 0.65, energy: 0.65, organic: 0.75 },
+  'disco':              { bpm: 120, density: 0.7,  brightness: 0.75, energy: 0.7,  organic: 0.45 },
+  'motown':             { bpm: 110, density: 0.6,  brightness: 0.65, energy: 0.5,  organic: 0.8  },
 
   // Blues
-  'blues': { bpm: 90, density: 0.45, brightness: 0.45 },
-  'delta blues': { bpm: 80, density: 0.3, brightness: 0.4 },
-  'electric blues': { bpm: 100, density: 0.55, brightness: 0.5 },
+  'blues':              { bpm: 90,  density: 0.45, brightness: 0.45, energy: 0.4,  organic: 0.85 },
+  'delta blues':        { bpm: 80,  density: 0.3,  brightness: 0.4,  energy: 0.35, organic: 0.95 },
+  'electric blues':     { bpm: 100, density: 0.55, brightness: 0.5,  energy: 0.5,  organic: 0.75 },
 
   // World & Regional
-  'afrobeats': { bpm: 108, density: 0.65, brightness: 0.7 },
-  'afropop': { bpm: 110, density: 0.6, brightness: 0.7 },
-  'reggae': { bpm: 80, density: 0.5, brightness: 0.55 },
-  'dancehall': { bpm: 100, density: 0.65, brightness: 0.6 },
-  'dub': { bpm: 75, density: 0.45, brightness: 0.4 },
-  'latin': { bpm: 110, density: 0.6, brightness: 0.7 },
-  'reggaeton': { bpm: 95, density: 0.7, brightness: 0.65 },
-  'cumbia': { bpm: 95, density: 0.55, brightness: 0.65 },
-  'bachata': { bpm: 130, density: 0.5, brightness: 0.6 },
-  'salsa': { bpm: 180, density: 0.7, brightness: 0.75 },
-  'bossa nova': { bpm: 80, density: 0.3, brightness: 0.6 },
-  'samba': { bpm: 100, density: 0.65, brightness: 0.7 },
-  'flamenco': { bpm: 120, density: 0.6, brightness: 0.55 },
-  'fado': { bpm: 75, density: 0.25, brightness: 0.4 },
-  'celtic': { bpm: 110, density: 0.45, brightness: 0.55 },
+  'afrobeats':          { bpm: 108, density: 0.65, brightness: 0.7,  energy: 0.6,  organic: 0.5  },
+  'afropop':            { bpm: 110, density: 0.6,  brightness: 0.7,  energy: 0.55, organic: 0.5  },
+  'reggae':             { bpm: 80,  density: 0.5,  brightness: 0.55, energy: 0.35, organic: 0.7  },
+  'dancehall':          { bpm: 100, density: 0.65, brightness: 0.6,  energy: 0.6,  organic: 0.4  },
+  'dub':                { bpm: 75,  density: 0.45, brightness: 0.4,  energy: 0.3,  organic: 0.4  },
+  'latin':              { bpm: 110, density: 0.6,  brightness: 0.7,  energy: 0.6,  organic: 0.65 },
+  'reggaeton':          { bpm: 95,  density: 0.7,  brightness: 0.65, energy: 0.6,  organic: 0.2  },
+  'cumbia':             { bpm: 95,  density: 0.55, brightness: 0.65, energy: 0.5,  organic: 0.7  },
+  'bachata':            { bpm: 130, density: 0.5,  brightness: 0.6,  energy: 0.4,  organic: 0.75 },
+  'salsa':              { bpm: 180, density: 0.7,  brightness: 0.75, energy: 0.75, organic: 0.8  },
+  'bossa nova':         { bpm: 80,  density: 0.3,  brightness: 0.6,  energy: 0.15, organic: 0.9  },
+  'samba':              { bpm: 100, density: 0.65, brightness: 0.7,  energy: 0.65, organic: 0.8  },
+  'flamenco':           { bpm: 120, density: 0.6,  brightness: 0.55, energy: 0.6,  organic: 0.9  },
+  'fado':               { bpm: 75,  density: 0.25, brightness: 0.4,  energy: 0.2,  organic: 0.9  },
+  'celtic':             { bpm: 110, density: 0.45, brightness: 0.55, energy: 0.45, organic: 0.9  },
 
   // Experimental & Avant-garde
-  'experimental': { bpm: 100, density: 0.5, brightness: 0.4 },
-  'noise': { bpm: 120, density: 0.9, brightness: 0.3 },
-  'harsh noise': { bpm: 120, density: 0.9, brightness: 0.3 },
-  'drone': { bpm: 65, density: 0.1, brightness: 0.25 },
-  'dark ambient': { bpm: 70, density: 0.1, brightness: 0.2 },
-  'musique concrète': { bpm: 90, density: 0.5, brightness: 0.4 },
-  'microtonal': { bpm: 100, density: 0.5, brightness: 0.5 },
+  'experimental':       { bpm: 100, density: 0.5,  brightness: 0.4,  energy: 0.4,  organic: 0.4  },
+  'noise':              { bpm: 120, density: 0.9,  brightness: 0.3,  energy: 0.9,  organic: 0.5  },
+  'harsh noise':        { bpm: 120, density: 0.9,  brightness: 0.3,  energy: 0.95, organic: 0.4  },
+  'drone':              { bpm: 65,  density: 0.1,  brightness: 0.25, energy: 0.15, organic: 0.4  },
+  'dark ambient':       { bpm: 70,  density: 0.1,  brightness: 0.2,  energy: 0.1,  organic: 0.2  },
+  'musique concrète':   { bpm: 90,  density: 0.5,  brightness: 0.4,  energy: 0.35, organic: 0.5  },
+  'microtonal':         { bpm: 100, density: 0.5,  brightness: 0.5,  energy: 0.4,  organic: 0.6  },
 
   // Singer-songwriter & Acoustic
-  'singer-songwriter': { bpm: 100, density: 0.3, brightness: 0.5 },
-  'acoustic': { bpm: 100, density: 0.25, brightness: 0.5 },
+  'singer-songwriter':  { bpm: 100, density: 0.3,  brightness: 0.5,  energy: 0.25, organic: 0.9  },
+  'acoustic':           { bpm: 100, density: 0.25, brightness: 0.5,  energy: 0.2,  organic: 0.95 },
 
   // Misc
-  'new age': { bpm: 75, density: 0.15, brightness: 0.5 },
-  'lo-fi beats': { bpm: 80, density: 0.3, brightness: 0.4 },
-  'chiptune': { bpm: 140, density: 0.7, brightness: 0.65 },
-  'soundtrack': { bpm: 90, density: 0.45, brightness: 0.5 },
-  'gospel': { bpm: 100, density: 0.55, brightness: 0.65 },
-  'grime': { bpm: 140, density: 0.7, brightness: 0.4 },
+  'new age':            { bpm: 75,  density: 0.15, brightness: 0.5,  energy: 0.1,  organic: 0.4  },
+  'lo-fi beats':        { bpm: 80,  density: 0.3,  brightness: 0.4,  energy: 0.15, organic: 0.25 },
+  'chiptune':           { bpm: 140, density: 0.7,  brightness: 0.65, energy: 0.6,  organic: 0.0  },
+  'soundtrack':         { bpm: 90,  density: 0.45, brightness: 0.5,  energy: 0.35, organic: 0.6  },
+  'gospel':             { bpm: 100, density: 0.55, brightness: 0.65, energy: 0.5,  organic: 0.8  },
+  'grime':              { bpm: 140, density: 0.7,  brightness: 0.4,  energy: 0.75, organic: 0.1  },
 };
 
 // Keyword fallback for genres not in the exact table
 const KEYWORD_PARAMS = [
-  { kw: 'metal', params: { bpm: 140, density: 0.85, brightness: 0.3 } },
-  { kw: 'punk', params: { bpm: 155, density: 0.8, brightness: 0.45 } },
-  { kw: 'house', params: { bpm: 125, density: 0.65, brightness: 0.6 } },
-  { kw: 'techno', params: { bpm: 130, density: 0.7, brightness: 0.4 } },
-  { kw: 'jazz', params: { bpm: 120, density: 0.55, brightness: 0.55 } },
-  { kw: 'folk', params: { bpm: 100, density: 0.3, brightness: 0.5 } },
-  { kw: 'pop', params: { bpm: 120, density: 0.6, brightness: 0.7 } },
-  { kw: 'rap', params: { bpm: 95, density: 0.65, brightness: 0.45 } },
-  { kw: 'hip hop', params: { bpm: 90, density: 0.65, brightness: 0.45 } },
-  { kw: 'rock', params: { bpm: 120, density: 0.65, brightness: 0.55 } },
-  { kw: 'blues', params: { bpm: 90, density: 0.45, brightness: 0.45 } },
-  { kw: 'soul', params: { bpm: 100, density: 0.55, brightness: 0.6 } },
-  { kw: 'ambient', params: { bpm: 75, density: 0.15, brightness: 0.4 } },
-  { kw: 'classical', params: { bpm: 90, density: 0.45, brightness: 0.55 } },
-  { kw: 'electronic', params: { bpm: 125, density: 0.6, brightness: 0.55 } },
-  { kw: 'dance', params: { bpm: 125, density: 0.7, brightness: 0.65 } },
-  { kw: 'reggae', params: { bpm: 80, density: 0.5, brightness: 0.55 } },
-  { kw: 'country', params: { bpm: 110, density: 0.45, brightness: 0.6 } },
-  { kw: 'latin', params: { bpm: 110, density: 0.6, brightness: 0.7 } },
-  { kw: 'funk', params: { bpm: 110, density: 0.7, brightness: 0.65 } },
-  { kw: 'disco', params: { bpm: 120, density: 0.7, brightness: 0.75 } },
-  { kw: 'indie', params: { bpm: 115, density: 0.5, brightness: 0.55 } },
+  { kw: 'metal', params: { bpm: 140, density: 0.85, brightness: 0.3, energy: 0.9, organic: 0.65 } },
+  { kw: 'punk', params: { bpm: 155, density: 0.8, brightness: 0.45, energy: 0.9, organic: 0.75 } },
+  { kw: 'house', params: { bpm: 125, density: 0.65, brightness: 0.6, energy: 0.6, organic: 0.1 } },
+  { kw: 'techno', params: { bpm: 130, density: 0.7, brightness: 0.4, energy: 0.7, organic: 0.05 } },
+  { kw: 'jazz', params: { bpm: 120, density: 0.55, brightness: 0.55, energy: 0.4, organic: 0.85 } },
+  { kw: 'folk', params: { bpm: 100, density: 0.3, brightness: 0.5, energy: 0.25, organic: 0.95 } },
+  { kw: 'pop', params: { bpm: 120, density: 0.6, brightness: 0.7, energy: 0.55, organic: 0.3 } },
+  { kw: 'rap', params: { bpm: 95, density: 0.65, brightness: 0.45, energy: 0.6, organic: 0.2 } },
+  { kw: 'hip hop', params: { bpm: 90, density: 0.65, brightness: 0.45, energy: 0.55, organic: 0.25 } },
+  { kw: 'rock', params: { bpm: 120, density: 0.65, brightness: 0.55, energy: 0.65, organic: 0.7 } },
+  { kw: 'blues', params: { bpm: 90, density: 0.45, brightness: 0.45, energy: 0.4, organic: 0.85 } },
+  { kw: 'soul', params: { bpm: 100, density: 0.55, brightness: 0.6, energy: 0.45, organic: 0.8 } },
+  { kw: 'ambient', params: { bpm: 75, density: 0.15, brightness: 0.4, energy: 0.1, organic: 0.15 } },
+  { kw: 'classical', params: { bpm: 90, density: 0.45, brightness: 0.55, energy: 0.35, organic: 0.95 } },
+  { kw: 'electronic', params: { bpm: 125, density: 0.6, brightness: 0.55, energy: 0.5, organic: 0.1 } },
+  { kw: 'dance', params: { bpm: 125, density: 0.7, brightness: 0.65, energy: 0.65, organic: 0.1 } },
+  { kw: 'reggae', params: { bpm: 80, density: 0.5, brightness: 0.55, energy: 0.35, organic: 0.7 } },
+  { kw: 'country', params: { bpm: 110, density: 0.45, brightness: 0.6, energy: 0.45, organic: 0.85 } },
+  { kw: 'latin', params: { bpm: 110, density: 0.6, brightness: 0.7, energy: 0.6, organic: 0.65 } },
+  { kw: 'funk', params: { bpm: 110, density: 0.7, brightness: 0.65, energy: 0.65, organic: 0.75 } },
+  { kw: 'disco', params: { bpm: 120, density: 0.7, brightness: 0.75, energy: 0.7, organic: 0.45 } },
+  { kw: 'indie', params: { bpm: 115, density: 0.5, brightness: 0.55, energy: 0.45, organic: 0.65 } },
 ];
 
-const DEFAULT_PARAMS = { bpm: 110, density: 0.5, brightness: 0.5 };
+const DEFAULT_PARAMS = { bpm: 110, density: 0.5, brightness: 0.5, energy: 0.5, organic: 0.5 };
 
 function lookupGenreParams(genre) {
   const lower = genre.toLowerCase();
@@ -238,6 +238,92 @@ function lookupGenreParams(genre) {
     if (lower.includes(kw)) return params;
   }
   return DEFAULT_PARAMS;
+}
+
+// ---------------------------------------------------------------------------
+// Sonic opposites — find genres that are maximally distant from the user's taste
+// centroid across all 5 axes (bpm, density, brightness, energy, organic).
+// ---------------------------------------------------------------------------
+
+// BPM range across the table, used to normalize BPM to 0-1
+const _bpmMin = Math.min(...Object.values(GENRE_PARAMS).map((p) => p.bpm));
+const _bpmMax = Math.max(...Object.values(GENRE_PARAMS).map((p) => p.bpm));
+const _bpmRange = _bpmMax - _bpmMin || 1;
+
+function _normBpm(bpm) { return (bpm - _bpmMin) / _bpmRange; }
+
+/**
+ * Compute weighted centroid of the user's taste across all 5 sonic axes.
+ * @param {Object} scores - genre → score map from scoreAllGenres()
+ * @returns {{ bpm: number, density: number, brightness: number, energy: number, organic: number }}
+ */
+function computeTasteCentroid(scores) {
+  let totalWeight = 0;
+  const sum = { bpm: 0, density: 0, brightness: 0, energy: 0, organic: 0 };
+
+  for (const [genre, score] of Object.entries(scores)) {
+    if (score <= 0) continue;
+    const p = GENRE_PARAMS[genre];
+    if (!p) continue;
+    sum.bpm += _normBpm(p.bpm) * score;
+    sum.density += p.density * score;
+    sum.brightness += p.brightness * score;
+    sum.energy += p.energy * score;
+    sum.organic += p.organic * score;
+    totalWeight += score;
+  }
+
+  if (totalWeight === 0) return { bpm: 0.5, density: 0.5, brightness: 0.5, energy: 0.5, organic: 0.5 };
+
+  return {
+    bpm: sum.bpm / totalWeight,
+    density: sum.density / totalWeight,
+    brightness: sum.brightness / totalWeight,
+    energy: sum.energy / totalWeight,
+    organic: sum.organic / totalWeight,
+  };
+}
+
+/**
+ * Euclidean distance between a genre's params and a centroid (all values 0-1).
+ */
+function sonicDistance(genreParams, centroid) {
+  const db = _normBpm(genreParams.bpm) - centroid.bpm;
+  const dd = genreParams.density - centroid.density;
+  const dbr = genreParams.brightness - centroid.brightness;
+  const de = genreParams.energy - centroid.energy;
+  const dorg = genreParams.organic - centroid.organic;
+  return Math.sqrt(db * db + dd * dd + dbr * dbr + de * de + dorg * dorg);
+}
+
+/**
+ * Find genres that are the sonic opposites of the user's taste.
+ * Returns genres sorted by descending sonic distance from the user's centroid,
+ * filtered to exclude genres the user already listens to.
+ *
+ * @param {Object} scores - genre → score map from scoreAllGenres()
+ * @param {number} count - how many opposites to return
+ * @returns {Array<{ genre: string, distance: number, category: string }>}
+ */
+export function findSonicOpposites(scores, count = 10) {
+  const centroid = computeTasteCentroid(scores);
+
+  // Score threshold: genres above this are "listened to" and excluded
+  const maxScore = Math.max(...Object.values(scores), 1);
+  const threshold = maxScore * 0.15;
+
+  const candidates = [];
+  for (const [genre, params] of Object.entries(GENRE_PARAMS)) {
+    const score = scores[genre] || 0;
+    if (score > threshold) continue; // user already listens to this
+    candidates.push({
+      genre,
+      distance: sonicDistance(params, centroid),
+    });
+  }
+
+  candidates.sort((a, b) => b.distance - a.distance);
+  return candidates.slice(0, count);
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +366,7 @@ const GENRE_ADJACENCY = {
  * Returns a Map of genre → score, where score reflects how much
  * the user listens to that genre (0 = not at all).
  */
-function scoreAllGenres(spotifyData, historyMetrics, intelligence, cachedArtistTags) {
+export function scoreAllGenres(spotifyData, historyMetrics, intelligence, cachedArtistTags) {
   // Start with every genre at 0
   const scores = {};
   for (const genre of Object.keys(GENRE_PARAMS)) {
@@ -352,6 +438,7 @@ function scoreAllGenres(spotifyData, historyMetrics, intelligence, cachedArtistT
 /**
  * Build the ranked spectrum: all genres sorted by score, then split into
  * anti (lowest), user (highest), and future (projected forward).
+ * Anti-taste genres are sorted by sonic distance (most opposite first).
  */
 function buildRankedSpectrum(scores, intelligence) {
   const ranked = Object.entries(scores)
@@ -363,31 +450,32 @@ function buildRankedSpectrum(scores, intelligence) {
 
   // Anti-taste: genres with score 0 or near 0 (bottom of rank)
   // User taste: genres with meaningful scores (top of rank)
-  const antiGenres = []; // score == 0, genres user doesn't listen to at all
-  const lowGenres = [];  // score > 0 but low, genres user barely touches
+  const antiGenres = []; // score == 0 or low, genres user doesn't listen to
   const userGenres = []; // meaningful score, sorted ascending
 
   for (const entry of ranked) {
-    if (entry.score === 0) {
+    if (entry.score === 0 || entry.score < maxScore * 0.1) {
       antiGenres.push(entry);
-    } else if (entry.score < maxScore * 0.1) {
-      lowGenres.push(entry);
     } else {
       userGenres.push(entry);
     }
   }
 
+  // Sort anti-taste genres by sonic distance from user centroid (most opposite first)
+  const centroid = computeTasteCentroid(scores);
+  for (const entry of antiGenres) {
+    const params = GENRE_PARAMS[entry.genre];
+    entry.sonicDistance = params ? sonicDistance(params, centroid) : 0;
+  }
+  antiGenres.sort((a, b) => b.sonicDistance - a.sonicDistance);
+
   // Reverse userGenres so highest score is first (for position 50)
   userGenres.reverse();
-
-  // Build the full anti-taste list: pure anti first, then low-scored
-  // This gives a smooth transition from "never listened" → "barely listened" → "top taste"
-  const fullAntiList = [...antiGenres, ...lowGenres];
 
   // Build future genres from user's taste + drift projections
   const futureGenres = buildFutureGenres(userGenres, intelligence);
 
-  return { antiGenres: fullAntiList, userGenres, futureGenres };
+  return { antiGenres, userGenres, futureGenres };
 }
 
 /**

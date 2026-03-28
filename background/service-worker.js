@@ -407,7 +407,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           llmApiKey = llmData[`sb_apiKey_${llmProvider}`];
           if (llmApiKey) {
             llmAdapter = getAdapter(llmProvider);
-            llmModel = llmAdapter.getModelByTier('standard');
+            // Music prompt generation is a structured JSON output task — use the fast
+            // model (e.g. Gemini 2.5 Flash, Claude Haiku, GPT-4o-mini) for speed.
+            // The fast tier is equally good at following detailed system prompts.
+            llmModel = llmAdapter.getModelByTier('fast');
           }
         }
 
@@ -426,7 +429,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               'future-taste': buildFutureTasteSystemPrompt,
             };
             const DEFAULT_INTENTS = {
-              'anti-taste': 'Analyze my taste profile and generate a track from my biggest blind spot. Include one familiar anchor element.',
+              'anti-taste': 'Analyze my taste profile and generate a track that is the sonic opposite of my listening habits. Include one familiar anchor element.',
               'future-taste': 'Analyze my taste drift and generate a track that represents where my taste is heading in 3-6 months. Extrapolate from my emerging artists and rising genres.',
             };
             const buildSystemPrompt = SYSTEM_PROMPTS[mode] || buildMusicAgentSystemPrompt;
@@ -478,8 +481,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
               // Single LLM call with all data — produce the prompt
               genProgress('Crafting the perfect prompt…');
-              const systemResult = buildSystemPrompt(historyMetrics, spotifyData, intelligence);
-              // buildAntiTasteSystemPrompt returns { prompt, genre, category }; others return a string
+              const systemResult = buildSystemPrompt(historyMetrics, spotifyData, intelligence, getCachedArtistTags());
+              // buildAntiTasteSystemPrompt returns { prompt, genre, distance }; others return a string
               let systemContent = typeof systemResult === 'string' ? systemResult : systemResult.prompt;
               const antiTasteGenre = typeof systemResult === 'object' ? systemResult.genre : null;
 
@@ -651,7 +654,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const anti = anchors.anti;
             lyriaPrompt = `An original composition: ${anti.prompt}. At ${anti.params.bpm} BPM.`;
             genTags = anti.prompt.split(',').slice(0, 3).map((t) => t.trim());
-            modeReason = 'Fallback anti-taste: genres picked from your blind spots based on listening history.';
+            modeReason = 'Fallback anti-taste: sonic opposites computed from your taste centroid.';
           } else {
             // Normal/future fallback — fetch Last.fm tags for the fallback builder
             let fallbackLastfmTags = [];
@@ -695,10 +698,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               .replace(/\d+\s*bpm/gi, '')
               .replace(/\b[A-G][#b]?\s*(major|minor|dorian|phrygian|lydian|mixolydian|aeolian|locrian|pentatonic|chromatic|harmonic\s*minor|melodic\s*minor)\b/gi, '')
               .replace(/\b\d+\/\d+\s*(time)?\b/gi, '')
-              .replace(/\b(tempo|key|bpm|time signature)[:\s]*[^\s,.]*/gi, '')
+              .replace(/\b(tempo|key|bpm|time signature|intensity|density|brightness|warmth|stereo width|reverb|production)[:\s]*[^\s,.]*/gi, '')
+              .replace(/\b(verse|chorus|bridge|outro|intro|drop|buildup|breakdown|hook|fade[\s-]?(in|out))\b/gi, '')
+              .replace(/\b\d+(\.\d+)?\s*(%|percent|db|hz|khz|ms)\b/gi, '')
               .replace(/\s{2,}/g, ' ')
               .trim();
-            const artPrompt = `Abstract album cover artwork. Visual style: ${artDescription}. The aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition using only shapes, colors, textures, light, and patterns. Do not include any text, letters, words, numbers, typography, logos, or writing anywhere in the image.`;
+            const artPrompt = `TEXT-FREE abstract album cover artwork, no words anywhere. Visual style: ${artDescription}. The aesthetic should match the era and genre of the music — use design sensibilities authentic to that period and sound. Bold, iconic, evocative composition using only shapes, colors, textures, light, and patterns. The image must be purely visual with absolutely zero text, zero letters, zero words, zero numbers, zero typography, zero logos, zero writing, zero symbols, zero watermarks. Only abstract art.`;
             const imgResult = await imgAdapter.generate({ prompt: artPrompt, model: imgModel || imgAdapter.models[0].id }, imgKey);
             console.log('[Spotify Brainer] Album art generated');
             if (genTabId) {
@@ -1354,7 +1359,9 @@ async function executeTool(toolName, input) {
       params.userId = spotifyData.userProfile.id;
     }
     const result = await fn(token, params);
-    return { success: true, data: result };
+    // Playback commands return null (HTTP 204) — give the LLM a clear confirmation
+    // so it doesn't misinterpret null as a failure
+    return { success: true, data: result ?? `${mapping.action} completed successfully.` };
   } catch (e) {
     return { error: e.message };
   }

@@ -11,8 +11,10 @@ export class VeoAdapter extends VideoGenAdapter {
   displayName = 'Veo (Google AI)';
   apiKeyUrl = 'https://aistudio.google.com/apikey';
   models = [
-    { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' },
-    { id: 'veo-3.0-generate-preview', name: 'Veo 3' },
+    { id: 'veo-3.1-generate-preview', name: 'Veo 3.1 (Preview)' },
+    { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast (Preview)' },
+    { id: 'veo-3.0-generate-001', name: 'Veo 3' },
+    { id: 'veo-3.0-fast-generate-001', name: 'Veo 3 Fast' },
     { id: 'veo-2.0-generate-001', name: 'Veo 2' },
   ];
 
@@ -56,7 +58,11 @@ export class VeoAdapter extends VideoGenAdapter {
 
     if (!startResp.ok) {
       const err = await startResp.json().catch(() => ({}));
-      throw new Error(err.error?.message || `HTTP ${startResp.status}`);
+      const msg = err.error?.message || `HTTP ${startResp.status}`;
+      if (startResp.status === 403) {
+        throw new Error(`Permission denied (403). Veo requires a paid API key with billing enabled in Google AI Studio. ${msg}`);
+      }
+      throw new Error(msg);
     }
 
     const op = await startResp.json();
