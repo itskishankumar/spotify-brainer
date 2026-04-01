@@ -140,11 +140,12 @@ function buildSystemPrompt() {
     `- Only use seek to jump within the CURRENTLY PLAYING track. Never use seek to start a new song at a timestamp — use play_track with position_ms instead.`,
     ``,
     `## Communication style`,
-    `Be conversational, warm, and expressive — like a music-obsessed friend who's genuinely excited to help.`,
-    `Give thorough, detailed responses. Don't be terse or bullet-point-only. Elaborate on your reasoning, share musical insights, and explain connections between artists/genres.`,
-    `When recommending music, explain WHY — what makes it special, how it connects to the user's taste, what to listen for.`,
-    `When analyzing taste, paint a picture — describe the sonic landscape, the emotional arc, the story their listening tells.`,
-    `Use markdown formatting (bold, headers, lists) to structure longer responses for readability.`,
+    `Be concise. Short, punchy replies. No filler, no fluff.`,
+    `Just act — don't narrate what you're about to do or explain obvious things.`,
+    `When the user says "play X", just play it. Confirm in one short line max.`,
+    `Only elaborate when the user explicitly asks for analysis, recommendations, or explanations.`,
+    `When you DO elaborate (because asked), be insightful and specific — not generic.`,
+    `Use markdown formatting only when it genuinely helps readability.`,
     ``,
     `IMPORTANT: When mentioning or suggesting songs, ALWAYS format them as Spotify links using this exact format:`,
     `[Song Name](spotify:track:TRACK_ID) by Artist Name`,
@@ -422,6 +423,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
 
+        console.log('[Spotify Brainer] Music gen LLM setup:', { llmProvider, hasAdapter: !!llmAdapter, llmModel, hasApiKey: !!llmApiKey, userIntent });
+
         // 2. Agentic loop — the LLM parses the user's intent, calls get_history_taste
         //    with date params if a time period is mentioned, then uses its music knowledge
         //    of the returned artists/tracks to output a Lyria JSON prompt.
@@ -521,7 +524,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               console.log('[Spotify Brainer] LLM response:', response.content?.slice(0, 500));
               const parsed = extractLyriaJson(response.content);
               if (parsed) {
-                modeReason = parsed.antiTasteReason || parsed.futureTasteReason || null;
+                modeReason = parsed.antiTasteReason || parsed.futureTasteReason || parsed.reason || null;
                 genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
                 lyriaPrompt = assembleLyriaPrompt(parsed);
                 console.log('[Spotify Brainer] Parsed Lyria JSON:', { genre: parsed.genre, tags: genTags, reason: modeReason?.slice(0, 80) });
@@ -645,12 +648,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
               const parsed = extractLyriaJson(response.content);
               if (parsed) {
+                modeReason = parsed.reason || null;
                 genTags = Array.isArray(parsed.tags) ? parsed.tags.slice(0, 3) : null;
                 lyriaPrompt = assembleLyriaPrompt(parsed);
               }
             }
           } catch (e) {
-            console.warn('[Spotify Brainer] Music agent failed, using fallback:', e.message, e.stack);
+            console.error('[Spotify Brainer] Music agent LLM failed:', e.message, e.stack);
+            genProgress(`LLM failed: ${e.message} — using fallback…`);
           }
         }
 
@@ -678,7 +683,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 console.warn('[Spotify Brainer] Last.fm fallback enrichment failed:', e.message);
               }
             }
-            lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence, lastfmTags: fallbackLastfmTags });
+            lyriaPrompt = buildFallbackLyriaPrompt({ historyMetrics, spotifyData, intelligence, lastfmTags: fallbackLastfmTags, moodHint: userIntent || null });
           }
         }
 
@@ -1512,7 +1517,6 @@ chrome.runtime.onConnect.addListener((port) => {
           toolResults.push({
             type: 'tool_result',
             tool_use_id: tc.id,
-            tool_name: tc.name,
             content: JSON.stringify(resultContent),
           });
 

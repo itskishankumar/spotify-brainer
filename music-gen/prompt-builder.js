@@ -34,7 +34,7 @@ export function buildMusicAgentSystemPrompt(historyMetrics, spotifyData, intelli
   lines.push('');
   lines.push('## Output format');
   lines.push('Output a single JSON object — no explanation, no markdown, nothing outside the JSON:');
-  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>}');
+  lines.push('{"bpm":<int>,"key":"e.g. A minor","genre":"1-3 words","tags":["tag1","tag2","tag3"],"instruments":["..."],"production":"...","mood":"3-5 adjectives","intensity":<1-10>,"reason":"1-2 sentences: why you chose this genre, BPM, and mood — how does it connect to the user\'s request and taste?"}');
   lines.push('- tags: exactly 3 short genre/style/mood descriptors for this track (e.g. ["dreamy","shoegaze","lo-fi"] or ["trap","dark","heavy"]). These are displayed to the user as labels.');
   lines.push('');
 
@@ -422,5 +422,10 @@ export function buildFallbackLyriaPrompt({ periodStats, historyMetrics, spotifyD
     production += ', ' + productionFromTags.slice(0, 3).join(', ') + ' influences';
   }
 
-  return assembleLyriaPrompt({ bpm, key, genre: p.genre, instruments: p.instruments, production, mood, intensity });
+  const result = assembleLyriaPrompt({ bpm, key, genre: p.genre, instruments: p.instruments, production, mood, intensity });
+  // Prepend user's intent so Lyria respects their creative direction
+  if (moodHint && moodHint.trim()) {
+    return `${moodHint.trim()}. ${result}`;
+  }
+  return result;
 }

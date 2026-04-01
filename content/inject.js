@@ -545,7 +545,7 @@
   function showPanel(name) {
     activePanel = name;
     messagesEl.style.display = name === 'chat' ? 'flex' : 'none';
-    inputArea.style.display = name === 'chat' ? 'block' : 'none';
+    inputArea.style.display = name === 'chat' ? 'flex' : 'none';
     tokenCounter.style.display = name === 'chat' ? 'block' : 'none';
     settingsEl.classList.toggle('open', name === 'settings');
     dataViewerEl.classList.toggle('open', name === 'data');
@@ -1657,8 +1657,14 @@
   document.getElementById('sb-btn-history').addEventListener('click', () => {
     showingConvList = !showingConvList;
     convListEl.classList.toggle('open', showingConvList);
-    // No highlight for conversations button
-    if (showingConvList) renderConvList();
+    // Position dropdown below header + context bar
+    if (showingConvList) {
+      const contextBar = document.getElementById('sb-context-bar');
+      const header = document.querySelector('.sb-header');
+      const top = (header?.offsetHeight || 0) + (contextBar?.offsetHeight || 0);
+      convListEl.style.top = top + 'px';
+      renderConvList();
+    }
   });
 
   function exportConversation(conv) {
@@ -1800,6 +1806,7 @@
     scrollToBottom();
     inputEl.value = '';
     autoResizeInput();
+    saveConversations();
 
     // Start generation
     isGenerating = true;
@@ -1839,6 +1846,7 @@
 
       let toolStatusEl = null; // Container for tool execution status pills
       let toolRoundId = 0; // Unique ID per tool round to scope pill queries
+      let needsToolSeparator = false; // Insert separator before first text after tools
 
       port.onMessage.addListener((chunk) => {
         if (chunk.type === 'text') {
@@ -1849,6 +1857,11 @@
           // but keep the element in the DOM so completed pills remain visible.
           toolStatusEl = null;
 
+          // After a tool round, ensure text doesn't run together
+          if (needsToolSeparator && assistantMsg.content && !/\s$/.test(assistantMsg.content)) {
+            assistantMsg.content += '\n';
+          }
+          needsToolSeparator = false;
           assistantMsg.content += chunk.content;
 
           if (!assistantEl) {
@@ -1864,12 +1877,23 @@
           const typing = document.getElementById('sb-typing');
           if (typing) typing.remove();
 
+          // Ensure assistant message element exists so pills render inside it
+          if (!assistantEl) {
+            assistantEl = createMessageEl(assistantMsg, conv.messages.length - 1);
+            messagesEl.appendChild(assistantEl);
+            contentEl = assistantEl.querySelector('.sb-msg-content');
+          }
+
           if (!toolStatusEl) {
             toolRoundId++;
-            toolStatusEl = document.createElement('div');
-            toolStatusEl.className = 'sb-tool-status';
+            // Reuse existing tool-status container if one exists in this message
+            toolStatusEl = assistantEl.querySelector('.sb-tool-status');
+            if (!toolStatusEl) {
+              toolStatusEl = document.createElement('div');
+              toolStatusEl.className = 'sb-tool-status';
+              assistantEl.insertBefore(toolStatusEl, contentEl);
+            }
             toolStatusEl.dataset.round = toolRoundId;
-            messagesEl.appendChild(toolStatusEl);
           }
           const pill = document.createElement('div');
           pill.className = 'sb-tool-pill sb-tool-pending';
@@ -1893,6 +1917,7 @@
             } else if (chunk.status === 'done') {
               pill.textContent = `✓ ${formatToolName(chunk.toolName)}`;
               pill.className = 'sb-tool-pill sb-tool-done';
+              needsToolSeparator = true;
             } else if (chunk.status === 'error') {
               pill.textContent = `✗ ${formatToolName(chunk.toolName)}: ${chunk.result}`;
               pill.className = 'sb-tool-pill sb-tool-error';
@@ -1905,6 +1930,7 @@
             tc.status = chunk.status === 'done' ? 'done' : chunk.status === 'error' ? 'error' : tc.status;
             if (chunk.status === 'error') tc.error = chunk.result;
           }
+          saveConversations();
           scrollToBottom();
         } else if (chunk.type === 'done') {
           // Mark any leftover pending/executing pills as cancelled
@@ -1935,7 +1961,10 @@
           }
           toolStatusEl = null;
           showError(chunk.content, 'LLM Response');
-          conv.messages.pop();
+          // Only remove the message if nothing was generated (no content and no tool calls)
+          if (!assistantMsg.content && !assistantMsg.toolCalls.length) {
+            conv.messages.pop();
+          }
           finishGeneration();
         }
       });
@@ -1958,8 +1987,6 @@
       conv.messages.pop();
       finishGeneration();
     }
-
-    saveConversations();
   }
 
   function formatToolName(name) {
@@ -2114,6 +2141,8 @@
     if (data.sb_provider) {
       providerSelect.value = data.sb_provider;
     }
+    // Ensure provider is always persisted (covers first-run / default-never-saved)
+    chrome.storage.local.set({ sb_provider: providerSelect.value });
     updateProviderSettings();
     if (data.sb_conversations) {
       conversations = data.sb_conversations;
